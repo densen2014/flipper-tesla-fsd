@@ -67,6 +67,13 @@ static void tier_override_changed(VariableItem* item) {
     app->gtw_tier_override = (idx == 1);
 }
 
+static void scroll_press_changed(VariableItem* item) {
+    TeslaFSDApp* app = variable_item_get_context(item);
+    uint8_t idx = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, toggle_text[idx]);
+    app->scroll_press_ap = (idx == 1);
+}
+
 static void nav_enable_changed(VariableItem* item) {
     TeslaFSDApp* app = variable_item_get_context(item);
     uint8_t idx = variable_item_get_current_value_index(item);
@@ -161,6 +168,7 @@ void tesla_fsd_scene_settings_on_enter(void* context) {
 
     // ── Beta features (report results in GitHub issues) ──
     variable_item_list_add(list, "-- Beta (report!) --", 0, NULL, NULL);
+    ADD_TOGGLE("ScrollPress AP",  scroll_press_changed,      scroll_press_ap)
     ADD_TOGGLE("Nav FSD Route",  nav_enable_changed,       assist_nav_enable)
     ADD_TOGGLE("TLSSC bit38",   tlssc_bit38_changed,      assist_tlssc_bit38)
     ADD_TOGGLE("Lane Graph",    lane_graph_changed,        assist_show_lane_graph)

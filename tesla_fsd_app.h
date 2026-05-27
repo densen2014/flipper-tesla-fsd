@@ -71,6 +71,7 @@ typedef struct {
     bool tlssc_restore;      // 0x331 DAS config spoof to restore TLSSC
     bool ap_first;           // 2026.14.x: delay injection until AP is engaged
     bool gtw_tier_override;  // 0x7FF active tier=SELF_DRIVING override
+    bool scroll_press_ap;    // 0x3C2 scroll-press AP engage (HW4-only, Service mode)
 
     // driver assist overrides (0x3F8 + 0x3FD)
     bool assist_nav_enable;      // nav-based FSD routing (EU/restricted)

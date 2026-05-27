@@ -43,6 +43,7 @@
 #define CAN_ID_APS_EACMON    0x27D  // 637  - APS_eacMonitor (steering permission — Party CAN)
 #define CAN_ID_ENERGY_CONS   0x33A  // 826  - UI_ratedConsumption (energy Wh/km — Party CAN)
 #define CAN_ID_DRIVER_ASSIST 0x3F8  // 1016 - UI_driverAssistControl (also follow distance — Party CAN)
+#define CAN_ID_VCLEFT_SWITCH 0x3C2  // 962  - VCLEFT_switchStatus (steering-wheel scrollwheel buttons — Vehicle CAN)
 
 typedef enum {
     TeslaHW_Unknown = 0,
@@ -103,6 +104,16 @@ typedef struct {
     // --- AP-first mode (2026.14.x compatibility) ---
     bool ap_first;               // delay 0x3FD injection until AP is engaged
     uint8_t das_ap_state;        // DAS_autopilotState: 0=UNAVAIL 1=AVAIL 2=ACTIVE_NOMINAL 3+=active
+
+    // --- Scroll-Press AP Engage (0x3C2 VCLEFT_switchStatus, HW4-only, Service mode) ---
+    // Injects the right-scrollwheel-down sequence (swcRightPressed 1→2→2→1 across
+    // 4 consecutive mux=1 frames) when DAS_autopilotState transitions from UNAVAIL
+    // to AVAIL. Discovered + bench-verified on Highland HW4 / 2026.14.2 by @JakNo
+    // in #43 — first known sidechannel that engages AP without touching 0x3FD.
+    // Per #43 + HW3 negative test from @DmitroPanteliuk, restricted to HW4 in v2.15.
+    bool scroll_press_ap;        // user toggle
+    uint8_t scroll_press_state;  // 0=idle, 1..4=firing frame N, 5=cooldown (awaiting AP drop)
+    bool scroll_press_armed;     // true once we have observed das_ap_state==0 (required before first fire)
 
     // --- DAS state (from 0x39B / 0x389 — Party CAN, read-only) ---
     uint8_t das_hands_on_state;  // 0-15 (4-bit nag level from DAS, more precise than EPAS 2-bit)
@@ -331,6 +342,13 @@ void fsd_handle_energy_consumption(FSDState* state, const CANFRAME* frame);
  *  byte[0] bits 1:0 = 0x01 (kTrackModeRequestOn) + recalc checksum byte[7].
  *  Source: ev-open-can-tools setTrackModeRequest(). */
 bool fsd_handle_track_mode_inject(FSDState* state, CANFRAME* frame);
+
+/** Inject right-scrollwheel press on 0x3C2 mux=1 to engage AP via the chassis
+ *  sidechannel — no 0x3FD touch required. Fires the 4-frame sequence
+ *  swcRightPressed = 1, 2, 2, 1 (bits 12-13 of the 0x3C2 mux=1 frame) when
+ *  das_ap_state rises 0→1. HW4 + Service mode only. Returns true if frame
+ *  was modified (caller should retransmit). Source: @JakNo in #43. */
+bool fsd_handle_scroll_press_inject(FSDState* state, CANFRAME* frame);
 
 /** Build a SCCM_leftStalk (0x249) frame for high beam strobe.
  *  SCCM_highBeamStalkStatus (bit12|2) = 1 (PULL) for flash.

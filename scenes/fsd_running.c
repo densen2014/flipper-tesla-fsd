@@ -127,6 +127,9 @@ static int32_t fsd_running_worker(void* context) {
     state.tlssc_restore = app->tlssc_restore;
     state.ap_first = app->ap_first;
     state.gtw_tier_override = app->gtw_tier_override;
+    state.scroll_press_ap = app->scroll_press_ap;
+    state.scroll_press_state = 0;
+    state.scroll_press_armed = false;
     state.assist_nav_enable = app->assist_nav_enable;
     state.assist_hands_off = app->assist_hands_off;
     state.assist_dev_mode = app->assist_dev_mode;
@@ -381,6 +384,10 @@ static int32_t fsd_running_worker(void* context) {
                     }
                 } else if(frame.canId == CAN_ID_AP_CONTROL) {
                     if(fsd_handle_autopilot_frame(&state, &frame) && tx_allowed) {
+                        send_can_frame(mcp, &frame);
+                    }
+                } else if(frame.canId == CAN_ID_VCLEFT_SWITCH) {
+                    if(fsd_handle_scroll_press_inject(&state, &frame) && tx_allowed) {
                         send_can_frame(mcp, &frame);
                     }
                 }

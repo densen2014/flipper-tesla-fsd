@@ -625,6 +625,75 @@ bool fsd_handle_track_mode_inject(FSDState* state, CANFRAME* frame) {
     return true;
 }
 
+// --- Scroll-Press AP Engage (0x3C2, HW4-only) ---
+//
+// Per @JakNo's bench testing in #43: injecting the right-scrollwheel-down
+// sequence on VCLEFT_switchStatus mux=1 engages AP and the car treats it as
+// indistinguishable from a physical scrollwheel press. No counter, no CRC —
+// just replace the swcRightPressed bit-pair in 4 consecutive mux=1 frames.
+//
+// State machine across 0x3C2 mux=1 frames:
+//   state=0, armed=false  : initial; wait for das_ap_state==0 before arming
+//   state=0, armed=true   : armed; will fire when das_ap_state transitions to 1
+//   state=1..4            : actively firing frame N of the sequence
+//   state=5               : cooldown; wait for das_ap_state==0 before re-arming
+//
+// Sequence: swcRightPressed = 1, 2, 2, 1 across 4 consecutive frames.
+// Field is bits 12-13 of the 64-bit frame = byte 1 bits 4-5.
+
+bool fsd_handle_scroll_press_inject(FSDState* state, CANFRAME* frame) {
+    if(!state->scroll_press_ap) return false;
+    if(state->hw_version != TeslaHW_HW4) return false;     // HW4-only per v2.15 scope
+    if(state->op_mode != OpMode_Service) return false;     // Service mode safety gate
+    if(frame->data_lenght < 2) return false;
+
+    // VCLEFT_switchStatusIndex (mux) at byte 0 bits 0-1. Right-scroll lives on mux=1.
+    uint8_t mux = frame->buffer[0] & 0x03;
+    if(mux != 1) return false;
+
+    uint8_t ap = state->das_ap_state;
+
+    // Arm tracking: require a UNAVAIL observation before any fire, then before each re-fire.
+    if(ap == 0) {
+        state->scroll_press_armed = true;
+        if(state->scroll_press_state == 5) {
+            state->scroll_press_state = 0; // cleared cooldown
+        }
+    }
+
+    // Rising-edge fire trigger: 0→1 transition while armed.
+    if(state->scroll_press_state == 0 && state->scroll_press_armed && ap == 1) {
+        state->scroll_press_state = 1;
+        state->scroll_press_armed = false;
+    }
+
+    if(state->scroll_press_state < 1 || state->scroll_press_state > 4) {
+        return false;
+    }
+
+    // Emit sequence frame
+    uint8_t value;
+    switch(state->scroll_press_state) {
+    case 1: value = 1; break;
+    case 2: value = 2; break;
+    case 3: value = 2; break;
+    case 4: value = 1; break;
+    default: return false;
+    }
+
+    // swcRightPressed = byte 1 bits 4-5
+    frame->buffer[1] = (frame->buffer[1] & ~0x30u) | ((value & 0x03) << 4);
+
+    if(state->scroll_press_state >= 4) {
+        state->scroll_press_state = 5; // enter cooldown until AP drops
+    } else {
+        state->scroll_press_state++;
+    }
+
+    state->frames_modified++;
+    return true;
+}
+
 // --- SCCM_leftStalk (0x249) builders — Party CAN, 3 bytes ---
 // Frame layout:
 //   byte0: CRC = (0x49 + 0x02 + byte1 + byte2) & 0xFF
