@@ -800,6 +800,19 @@ bool fsd_handle_nag_killer(FSDState* state, const CANFRAME* frame, CANFRAME* out
     uint8_t das = state->das_hands_on_state;
     if(das == 0 || das == 8) return false;
 
+    // On-demand grip pulse: fire an immediate excursion when handsOnLevel
+    // rises into a nag-demand state (0=imminent, 3=escalated). v2.14 only
+    // emitted grip pulses on a fixed 5-9 s schedule, which let the yellow
+    // 2-second escalation get there first when a nag arrived between pulses.
+    // Resets the periodic cooldown so we don't double-pulse.
+    // Source: @deftdawg variant tested on 2016 MX HW3 in #70.
+    bool demand_now = (hands_on == 0 || hands_on == 3);
+    if(demand_now && !state->nag_demand_active && nag_exc_frames == 0) {
+        nag_exc_frames = 3 + (nag_xorshift32() % 3);          // 3-5 frame pulse
+        nag_frames_until_exc = 125 + (nag_xorshift32() % 100); // reset 5-9 s cooldown
+    }
+    state->nag_demand_active = demand_now;
+
     // --- Organic torque variation ---
     // torsionBarTorque encoding: tRaw = (Nm + 20.5) / 0.01
     // d[2] lower nibble = tRaw >> 8, d[3] = tRaw & 0xFF

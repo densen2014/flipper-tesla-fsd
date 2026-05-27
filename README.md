@@ -69,6 +69,7 @@
 ### Nag Killer (v2.1+)
 - DAS-aware gating — only echoes when DAS is actually demanding hands-on, zero bus traffic when DAS is satisfied
 - Organic torque variation — xorshift32 PRNG random walk in 1.00-2.40 Nm with grip pulse excursions to 3.10-3.30 Nm every 5-9 seconds
+- **On-demand grip pulse (v2.15+)** — when `handsOnLevel` rises into a nag-demand state (0 imminent / 3 escalated), an immediate grip pulse fires and the periodic schedule resets. Closes the 2-second yellow-escalation window that could open between scheduled pulses on v2.14 and earlier
 - EPAS counter+1 echo on `0x370` with level 0 (nag imminent) and level 3 (escalated alarm) suppression
 
 ### AP-First mode (v2.14+, for 2026.14.x firmware)

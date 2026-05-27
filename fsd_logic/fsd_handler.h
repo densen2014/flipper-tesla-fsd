@@ -70,6 +70,7 @@ typedef struct {
     bool emergency_vehicle_detect;
     bool nag_killer;           // CAN 880 counter echo method
     uint32_t nag_echo_count;
+    bool nag_demand_active;    // true while handsOnLevel == 0 or 3 — edge-detect source for on-demand grip pulse
 
     // operation mode + diagnostics
     OpMode op_mode;
