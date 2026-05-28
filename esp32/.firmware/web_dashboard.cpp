@@ -283,8 +283,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <div class="w-msg">
       <strong>&#9888;&#xFE0F; 2026.14.x firmware enforcement active.</strong>
       Tesla added a preflight check in 2026.14.x that disables autosteer
-      the moment any CAN frame touches <code>0x3FD</code>. Listen-Only mode
-      is safe. Enable <strong>AP-First</strong> in settings to delay
+      the moment any CAN frame touches <code>0x3FD</code>. Symptom on
+      the dash: <em>"Autopilot turning off"</em> appears within a second
+      of stalk engagement, then AP immediately disengages. Listen-Only
+      mode is safe. Enable <strong>AP-First</strong> in settings to delay
       injection until AP is engaged. Dismiss if you're on pre-14.x firmware.
     </div>
     <button class="w-dismiss" onclick="cmd('14x_warning',false)">Dismiss</button>
