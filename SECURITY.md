@@ -89,12 +89,13 @@ project's TX path can write to:
   is ON
 - `0x7FF` `GTW_carConfig` — retransmits the healthy snapshot when Ban
   Shield detects a server-side change; only when Ban Shield is armed
-- `0x3C2` `VCLEFT_switchStatus` — overwrites the `swcRightPressed`
-  bit-pair (bits 12-13) on mux=1 frames with the 4-frame sequence
-  `1, 2, 2, 1` to simulate a right-scrollwheel press; only when the
-  ScrollPress AP setting is ON, op mode is Service, HW is detected
-  as HW4, and `DAS_autopilotState` has transitioned from UNAVAIL to
-  AVAIL since the last firing
+- `0x3C2` `VCLEFT_switchStatus` — on mux=1 frames, runs a time-based
+  scroll-wheel engage gesture: holds `swcRightPressed` (bits 12-13)
+  ~250 ms, emits `swcRightScrollTicks` up (bits 24-29) ~150 ms, holds
+  `swcRightPressed` ~250 ms, then one final scroll-up. Only when the
+  ScrollPress AP setting is ON, op mode is Service, HW is detected as
+  HW4, and `DAS_autopilotState` has transitioned from UNAVAIL to AVAIL
+  since the last firing. Does not write to `0x3FD`
 
 It does NOT write to:
 

@@ -105,7 +105,7 @@
 
 | Setting | CAN ID | Description |
 |---------|--------|-------------|
-| **ScrollPress AP** | `0x3C2` mux=1, bits 12-13 | **HW4-only, Service mode only.** Injects the right-scrollwheel-down sequence (`swcRightPressed` = 1, 2, 2, 1) when `DAS_autopilotState` rises 0→1, engaging AP via the chassis sidechannel instead of touching `0x3FD`. First known 2026.14.x bypass — works on Highland HW4 / 2026.14.2 per @JakNo's bench testing in [#43](https://github.com/hypery11/flipper-tesla-fsd/issues/43). HW3 disabled in v2.15 after @DmitroPanteliuk reported emergency-brake event on Intel HW3 2026.14.6 |
+| **ScrollPress AP** | `0x3C2` mux=1 | **HW4-only, Service mode only.** Engages AP via a time-based, human-like scroll-wheel gesture (press ~250ms → scroll-up ~150ms → press ~250ms → scroll-up) on `swcRightPressed` (bits 12-13) + `swcRightScrollTicks` (bits 24-29), fired when `DAS_autopilotState` rises 0→1 — no `0x3FD` touch. First known 2026.14.x bypass; discovered + bench-verified on Highland HW4 / 2026.14.2 by @JakNo ([#43](https://github.com/hypery11/flipper-tesla-fsd/issues/43), timed flow [#82](https://github.com/hypery11/flipper-tesla-fsd/pull/82)). HW3 disabled in v2.15 after @DmitroPanteliuk's emergency-brake report on Intel HW3 2026.14.6 |
 | **Nav FSD Route** | `0x3F8` bits 13/48/49 | Enable nav-based FSD routing (EU/restricted regions) |
 | **TLSSC bit38** | `0x3FD` mux0 bit38 | Explicit TLSSC enable; pair with TLSSC Restore (0x331) as the recommended banned-car combo |
 | **Lane Graph** | `0x3FD` mux1 bit45 | UI_showLaneGraph — lane visualization on non-FSD tier |

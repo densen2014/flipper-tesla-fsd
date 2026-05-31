@@ -106,14 +106,23 @@ typedef struct {
     uint8_t das_ap_state;        // DAS_autopilotState: 0=UNAVAIL 1=AVAIL 2=ACTIVE_NOMINAL 3+=active
 
     // --- Scroll-Press AP Engage (0x3C2 VCLEFT_switchStatus, HW4-only, Service mode) ---
-    // Injects the right-scrollwheel-down sequence (swcRightPressed 1→2→2→1 across
-    // 4 consecutive mux=1 frames) when DAS_autopilotState transitions from UNAVAIL
-    // to AVAIL. Discovered + bench-verified on Highland HW4 / 2026.14.2 by @JakNo
-    // in #43 — first known sidechannel that engages AP without touching 0x3FD.
-    // Per #43 + HW3 negative test from @DmitroPanteliuk, restricted to HW4 in v2.15.
-    bool scroll_press_ap;        // user toggle
-    uint8_t scroll_press_state;  // 0=idle, 1..4=firing frame N, 5=cooldown (awaiting AP drop)
-    bool scroll_press_armed;     // true once we have observed das_ap_state==0 (required before first fire)
+    // Engages AP via the steering scroll wheel without touching 0x3FD — the first
+    // known sidechannel past 2026.14.x preflight enforcement. Discovered + bench-
+    // verified on Highland HW4 / 2026.14.2 by @JakNo (#43).
+    //
+    // Per @JakNo's #82 refinement, the injection is TIME-BASED to mimic a real
+    // human engage gesture (a single frame-burst is less convincing):
+    //   phase 1: hold swcRightPressed         for ~250 ms   (1st press)
+    //   phase 2: emit  swcRightScrollTicks up  for ~150 ms   (scroll up)
+    //   phase 3: hold swcRightPressed         for ~250 ms   (2nd press)
+    //   phase 4: emit  swcRightScrollTicks up  once          (final scroll up)
+    // Fires on a DAS_autopilotState rising edge UNAVAIL(0)→AVAIL(1); one cycle
+    // per engage, re-arms only after AP drops back to UNAVAIL.
+    // Restricted to HW4 in v2.15 (HW3 emergency-brake report from @DmitroPanteliuk, #43).
+    bool scroll_press_ap;            // user toggle
+    uint8_t scroll_press_state;      // 0=idle/armed-track, 1=press1, 2=scroll1, 3=press2, 4=scroll-final, 5=cooldown
+    bool scroll_press_armed;         // true once das_ap_state==0 observed (required before each fire)
+    uint32_t scroll_press_phase_ms;  // now_ms at the start of the current phase (timing reference)
 
     // --- DAS state (from 0x39B / 0x389 — Party CAN, read-only) ---
     uint8_t das_hands_on_state;  // 0-15 (4-bit nag level from DAS, more precise than EPAS 2-bit)
@@ -343,12 +352,13 @@ void fsd_handle_energy_consumption(FSDState* state, const CANFRAME* frame);
  *  Source: ev-open-can-tools setTrackModeRequest(). */
 bool fsd_handle_track_mode_inject(FSDState* state, CANFRAME* frame);
 
-/** Inject right-scrollwheel press on 0x3C2 mux=1 to engage AP via the chassis
- *  sidechannel — no 0x3FD touch required. Fires the 4-frame sequence
- *  swcRightPressed = 1, 2, 2, 1 (bits 12-13 of the 0x3C2 mux=1 frame) when
- *  das_ap_state rises 0→1. HW4 + Service mode only. Returns true if frame
- *  was modified (caller should retransmit). Source: @JakNo in #43. */
-bool fsd_handle_scroll_press_inject(FSDState* state, CANFRAME* frame);
+/** Inject a human-like scroll-wheel AP engage gesture on 0x3C2 mux=1 — no 0x3FD
+ *  touch required. Time-based state machine (press / scroll-up / press / scroll-up)
+ *  per @JakNo's #82 design, fired on a das_ap_state UNAVAIL→AVAIL rising edge.
+ *  `now_ms` is a millisecond clock (Flipper passes furi_get_tick(), 1 kHz).
+ *  HW4 + Service mode only. Returns true if the frame was modified (caller
+ *  should retransmit). Source: @JakNo in #43 / #82. */
+bool fsd_handle_scroll_press_inject(FSDState* state, CANFRAME* frame, uint32_t now_ms);
 
 /** Build a SCCM_leftStalk (0x249) frame for high beam strobe.
  *  SCCM_highBeamStalkStatus (bit12|2) = 1 (PULL) for flash.
