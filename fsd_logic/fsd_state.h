@@ -204,6 +204,10 @@ typedef struct FSDState {
     // bit19 (EU summon restriction) and sets bit47 (summon enable), on HW3 + HW4.
     // Opt-in, default OFF. // TODO: add Summon EU Unlock to Flipper menu
     bool summon_unlock;
+    // ESP32 safety feedback: set when Summon EU Unlock is auto-disabled after
+    // detecting a drive-gear command on 0x229 GearLeverPosition FULL_DOWN.
+    bool summon_auto_off_drive;
+    uint32_t summon_auto_off_ms;
     // AP branch/tier selector (0x3FD DAS_autopilotControl mux1, UI_apmv3Branch,
     // bits 40-42 = byte5 bits 0-2). Enum: 0=LIVE 1=STAGE 2=DEV 3=STAGE2 4=EAP
     // 5=DEMO. Opt-in, default OFF (0xFF sentinel = don't touch). Experimental and
@@ -306,6 +310,10 @@ typedef struct FSDState {
     uint32_t seen_bms_hv;        // 0x132
     uint32_t seen_bms_soc;       // 0x292
     uint32_t seen_bms_thermal;   // 0x312
+
+    // latest right-stalk gear command (0x229 GearLeverPosition229)
+    uint8_t gear_lever_pos;
+    uint32_t gear_lever_last_ms;
 
     bool bms_output;             // print BMS data to serial
     uint32_t sleep_idle_ms;      // CAN silence before deep sleep

@@ -328,7 +328,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
                 state->nag_suppressed = true;
                 modified = true;
             }
-            if (state->summon_unlock) {
+            if (state->summon_unlock && !state->summon_auto_off_drive) {
                 set_bit(frame, SIG_AP_NAG_CLEAR_BIT, false);       // bit19 EU restriction clear
                 set_bit(frame, SIG_AP_HW4_NAG_CONFIRM_BIT, true);  // bit47 summon enable
                 modified = true;
@@ -379,7 +379,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
                 state->nag_suppressed = true;
                 modified = true;
             }
-            if (state->summon_unlock) {
+            if (state->summon_unlock && !state->summon_auto_off_drive) {
                 set_bit(frame, SIG_AP_NAG_CLEAR_BIT, false);       // bit19 EU restriction clear
                 set_bit(frame, SIG_AP_HW4_NAG_CONFIRM_BIT, true);  // bit47 summon enable
                 modified = true;

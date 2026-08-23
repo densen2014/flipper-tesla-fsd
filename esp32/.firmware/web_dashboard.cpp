@@ -360,6 +360,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="pill off" id="opMode"><span class="pd"></span>--</span>
   </div>
   <div class="row">
+    <span class="lbl">Drive State<br><small style="color:var(--muted)">from 0x229 GearLeverPosition (FULL_DOWN = D)</small></span>
+    <span class="pill off" id="drvSt"><span class="pd"></span>--</span>
+  </div>
+  <div class="row">
     <span class="lbl">Hardware</span>
     <span class="pill off" id="hwVer"><span class="pd"></span>--</span>
   </div>
@@ -498,6 +502,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
   <div class="row">
     <span class="lbl">Summon EU Unlock</span>
     <label class="sw"><input type="checkbox" id="swSummon" onchange="cmd('summon_unlock',this.checked)"><span class="sl2"></span></label>
+  </div>
+  <div id="summonAutoOffHint" style="display:none;color:var(--yellow);font-size:11px;line-height:1.35;padding:0 0 8px">
+    Temporarily disabled on drive gear: 0x229 GearLeverPosition FULL_DOWN (D).
+    <span id="summonAutoOffAgo"></span>
   </div>
   <div class="row">
     <span class="lbl">Continue on Green<br><small style="color:var(--muted)">pairs with TLSSC</small></span>
@@ -838,11 +846,31 @@ function updateControlsSummary(d){
   if(d.china_mode)items.push('China');
   if(d.isa_speed_enabled&&d.suppress_speed_chime)items.push('Chime');
   if(d.tlssc_restore)items.push('TLSSC');
+  if(d.summon_auto_off_drive)items.push('Summon Temp-Disabled');
   if(d.assist_tlssc_bit38)items.push('TLSSC bit38');
   if(d.display_enabled)items.push('Display');
   if(d.can_dump)items.push('CAN Dump');
   e.textContent=items.length?items.join(', '):'Expand to setup';
   e.title=e.textContent;
+}
+function syncSummonAutoOff(d){
+  var box=document.getElementById('summonAutoOffHint');
+  var ago=document.getElementById('summonAutoOffAgo');
+  if(!box||!ago)return;
+  if(!d.summon_auto_off_drive){
+    box.style.display='none';
+    ago.textContent='';
+    return;
+  }
+  box.style.display='block';
+  var ms=(d.summon_auto_off_ms||0);
+  var up=(d.uptime_s||0)*1000;
+  if(ms>0&&up>=ms){
+    var sec=Math.floor((up-ms)/1000);
+    ago.textContent='(' + sec + 's ago)';
+  }else{
+    ago.textContent='';
+  }
 }
 // ── Black-box incident recorder (#124) ──
 var bbCaptures=-1,bbNew=false,bbNoteDismissed=false;
@@ -951,12 +979,27 @@ function ring(p){
   b.style.stroke=socCol(p);
 }
 
+function driveStateText(d){
+  var pos=(d.gear_lever_pos===undefined)?0:(d.gear_lever_pos|0);
+  var last=(d.gear_lever_last_ms===undefined)?0:(d.gear_lever_last_ms|0);
+  var up=((d.uptime_s||0)*1000)|0;
+  var fresh=(last>0&&up>=last&&(up-last)<=5000);
+  if(!fresh) return {on:false,txt:'No recent stalk'};
+  if(pos===4) return {on:true,txt:'Drive (D)'};
+  if(pos===3) return {on:false,txt:'Half-Down'};
+  if(pos===2) return {on:false,txt:'Full-Up'};
+  if(pos===1) return {on:false,txt:'Half-Up'};
+  return {on:false,txt:'Center'};
+}
+
 function upd(d){
   if(!d || Date.now() < busy) return;
   // Status
   var apActive=!!d.ap_active;
   pill('fsdSt', apActive, apActive?'Active':'Waiting');
   pill('opMode', d.op_mode===1, d.op_mode===1?'Active':'Listen-Only');
+  var ds=driveStateText(d);
+  pill('drvSt', ds.on, ds.txt);
 
   var hwEl=document.getElementById('hwVer');
   if(hwEl){
@@ -1012,6 +1055,7 @@ function upd(d){
   if(document.getElementById('rowChime')) document.getElementById('rowChime').style.display=d.isa_speed_enabled?'flex':'none';
   if(document.getElementById('swTlssc')) document.getElementById('swTlssc').checked=d.tlssc_restore;
   if(document.getElementById('swSummon')) document.getElementById('swSummon').checked=d.summon_unlock;
+  syncSummonAutoOff(d);
   if(document.getElementById('swCog')) document.getElementById('swCog').checked=d.continue_on_green;
   if(document.getElementById('swTlssc38')) document.getElementById('swTlssc38').checked=d.assist_tlssc_bit38;
   if(document.getElementById('swRhd')) document.getElementById('swRhd').checked=d.assist_rhd_override;
@@ -1609,6 +1653,8 @@ static String build_json() {
     j += "\"suppress_speed_chime\":"; j += state.suppress_speed_chime  ? "true" : "false"; j += ',';
     j += "\"tlssc_restore\":"; j += state.tlssc_restore                ? "true" : "false"; j += ',';
     j += "\"summon_unlock\":"; j += state.summon_unlock                ? "true" : "false"; j += ',';
+    j += "\"summon_auto_off_drive\":"; j += state.summon_auto_off_drive ? "true" : "false"; j += ',';
+    j += "\"summon_auto_off_ms\":"; j += state.summon_auto_off_ms;      j += ',';
     j += "\"continue_on_green\":"; j += state.continue_on_green         ? "true" : "false"; j += ',';
     j += "\"assist_tlssc_bit38\":"; j += state.assist_tlssc_bit38       ? "true" : "false"; j += ',';
     j += "\"assist_rhd_override\":"; j += state.assist_rhd_override      ? "true" : "false"; j += ',';
@@ -1630,6 +1676,8 @@ static String build_json() {
     j += "\"bms_soc_seen\":";  j += state.seen_bms_soc;                j += ',';
     j += "\"bms_thermal_seen\":"; j += state.seen_bms_thermal;          j += ',';
     j += "\"rx_count\":";      j += state.rx_count;                    j += ',';
+    j += "\"gear_lever_pos\":"; j += (int)state.gear_lever_pos;         j += ',';
+    j += "\"gear_lever_last_ms\":"; j += state.gear_lever_last_ms;      j += ',';
     j += "\"tx_count\":";      j += state.tx_count;                    j += ',';
     j += "\"tx_modified\":";   j += state.frames_modified;             j += ',';
     j += "\"crc_errors\":";    j += state.crc_err_count;               j += ',';
@@ -2058,6 +2106,8 @@ static void ws_event(uint8_t num, WStype_t type,
             FSDState saved;
             state_enter();
             g_state->summon_unlock = enabled;
+            g_state->summon_auto_off_drive = false;
+            g_state->summon_auto_off_ms = 0u;
             saved = *g_state;
             state_exit();
             Serial.printf("[Web] Summon EU Unlock: %s\n", enabled ? "ON" : "OFF");

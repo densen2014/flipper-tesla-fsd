@@ -1189,8 +1189,35 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
     // ── Continuous AP HW3/Legacy state parsers (read-only, always) ──────────
     if (frame.id == CAN_ID_SCCM_RSTALK) {
         FSDState s = state_snapshot();
-        if (s.hw_version != TeslaHW_HW3 && s.hw_version != TeslaHW_Legacy) return;
         uint32_t now_ms = millis();
+
+        // Safety trigger: when the stalk reports a drive-gear engage action
+        // (0x229 GearLeverPosition FULL_DOWN), temporarily disable Summon EU Unlock
+        // for this runtime session only (no NVS write).
+        if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
+            uint8_t gear_pos =
+                (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
+                SIG_GEAR_LEVER_POS_MASK;
+            state_enter();
+            g_state.gear_lever_pos = gear_pos;
+            g_state.gear_lever_last_ms = now_ms;
+            state_exit();
+            if (gear_pos == SIG_GEAR_LEVER_FULL_DOWN) {
+                bool disabled = false;
+                state_enter();
+                if (g_state.summon_unlock && !g_state.summon_auto_off_drive) {
+                    g_state.summon_auto_off_drive = true;
+                    g_state.summon_auto_off_ms = now_ms;
+                    disabled = true;
+                }
+                state_exit();
+                if (disabled) {
+                    Serial.println("[SAFE] Summon EU Unlock temp-disabled: 0x229 FULL_DOWN (drive gear)");
+                }
+            }
+        }
+
+        if (s.hw_version != TeslaHW_HW3 && s.hw_version != TeslaHW_Legacy) return;
         if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
             uint8_t gear_pos =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &

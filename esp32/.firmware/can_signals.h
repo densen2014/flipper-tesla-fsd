@@ -169,7 +169,7 @@
 #define SIG_GEAR_LEVER_HALF_UP              1u
 #define SIG_GEAR_LEVER_FULL_UP              2u
 #define SIG_GEAR_LEVER_HALF_DOWN            3u
-#define SIG_GEAR_LEVER_FULL_DOWN            4u
+#define SIG_GEAR_LEVER_FULL_DOWN            4u  // drive-gear engage stalk action (D)
 #define SIG_GEAR_LEVER_COUNTER_BYTE         1
 #define SIG_GEAR_LEVER_COUNTER_MASK      0x0Fu
 
