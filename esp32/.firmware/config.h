@@ -12,6 +12,7 @@
 #define CAN_ID_UI_MAP_DATA    0x238u  // 568  - UI_driverAssistMapData: map speed limit
 #define CAN_ID_SCCM_RSTALK    0x229u  // 553  - GearLever / right stalk
 #define CAN_ID_DAS_CONTROL    0x2B9u  // 697  - DAS_control: cruise set speed / ACC state
+#define CAN_ID_DI_STATE       0x286u  // 646  - DI_state: cruise/gear/park-brake/digital speed
 #define CAN_ID_DAS_STATUS2    0x389u  // 905  - DAS_status2: ACC speed limit
 #define CAN_ID_EPAS_STATUS    0x370u  // 880  - EPAS3P_sysStatus: nag killer target
 #define CAN_ID_GTW_CAR_CONFIG 0x398u  // 920  - GTW_carConfig:   HW version detection

@@ -214,6 +214,121 @@ static uint32_t g_cont_ap_last_brake_ms = 0;
 static uint32_t g_cont_ap_last_stalk_full_up_ms = 0;
 static uint8_t g_cont_ap_attempts = 0;
 static bool g_cont_ap_last_ap_active = false;
+static uint32_t g_summon_brake_last_trigger_ms = 0;
+static uint32_t g_summon_restore_candidate_ms = 0;
+enum SummonRestorePhase : uint8_t {
+    SummonRestore_WaitMove = 0,
+    SummonRestore_WaitStopHold,
+};
+static SummonRestorePhase g_summon_restore_phase = SummonRestore_WaitMove;
+
+struct SummonGuardConfig {
+    uint32_t brake_cooldown_ms;
+    uint8_t moved_speed_threshold;
+    uint32_t stop_hold_ms;
+    uint32_t min_lock_ms;
+};
+
+static constexpr SummonGuardConfig kSummonGuard = {
+    2500u,  // brake_cooldown_ms
+    1u,     // moved_speed_threshold
+    5000u,  // stop_hold_ms
+    30000u, // min_lock_ms
+};
+
+static void summon_restore_reset_state() {
+    g_summon_restore_phase = SummonRestore_WaitMove;
+    g_summon_restore_candidate_ms = 0u;
+}
+
+static void maybe_restore_summon_runtime_guard(uint32_t now_ms) {
+    bool restored = false;
+    state_enter();
+    if (!g_state.summon_auto_off_drive || !g_state.summon_unlock) {
+        summon_restore_reset_state();
+    } else {
+        bool moved_now = (g_state.di_digital_speed > kSummonGuard.moved_speed_threshold);
+        bool stopped_now = (g_state.di_digital_speed == 0u);
+        bool lock_time_ok =
+            (g_state.summon_auto_off_ms != 0u) &&
+            ((uint32_t)(now_ms - g_state.summon_auto_off_ms) >= kSummonGuard.min_lock_ms);
+
+        switch (g_summon_restore_phase) {
+            case SummonRestore_WaitMove:
+                if (moved_now) {
+                    g_summon_restore_phase = SummonRestore_WaitStopHold;
+                    g_summon_restore_candidate_ms = 0u;
+                }
+                break;
+            case SummonRestore_WaitStopHold:
+                if (moved_now) {
+                    g_summon_restore_candidate_ms = 0u;
+                } else if (stopped_now && lock_time_ok) {
+                    if (g_summon_restore_candidate_ms == 0u) {
+                        g_summon_restore_candidate_ms = now_ms;
+                    } else if ((uint32_t)(now_ms - g_summon_restore_candidate_ms) >= kSummonGuard.stop_hold_ms) {
+                        g_state.summon_auto_off_drive = false;
+                        g_state.summon_auto_off_ms = 0u;
+                        summon_restore_reset_state();
+                        restored = true;
+                    }
+                } else {
+                    g_summon_restore_candidate_ms = 0u;
+                }
+                break;
+        }
+    }
+    state_exit();
+    if (restored) {
+        Serial.println("[SAFE] Summon EU Unlock restored: moved once, then full stop hold");
+    }
+}
+
+static void handle_di_state_frame(const CanFrame &frame, uint32_t now_ms) {
+    uint8_t di_cruise_state = (frame.data[1] >> 4) & 0x07;
+    uint16_t raw_ds = ((uint16_t)frame.data[2] << 1) | ((frame.data[1] >> 7) & 0x01);
+    uint8_t di_digital_speed = (uint8_t)(raw_ds >> 1);
+    state_enter();
+    g_state.di_cruise_state = di_cruise_state;
+    g_state.di_digital_speed = di_digital_speed;
+    if (frame.dlc >= 5) {
+        g_state.di_park_brake_state = frame.data[4] & 0x0F;
+        g_state.di_autopark_state = (frame.data[3] >> 1) & 0x0F;
+    }
+    state_exit();
+    maybe_restore_summon_runtime_guard(now_ms);
+}
+
+static void summon_guard_on_di_state(const CanFrame &frame, uint32_t now_ms) {
+    handle_di_state_frame(frame, now_ms);
+}
+
+static void summon_guard_on_esp_status(const CanFrame &frame, uint32_t now_ms) {
+    bool disabled = false;
+    state_enter();
+    bool was_brake = g_state.driver_brake_applied;
+    fsd_handle_esp_status(&g_state, &frame);
+    bool is_brake = g_state.driver_brake_applied;
+    if (is_brake) g_cont_ap_last_brake_ms = now_ms;
+
+    bool brake_rising_edge = (!was_brake && is_brake);
+    bool cooldown_ok = (g_summon_brake_last_trigger_ms == 0u) ||
+                       ((uint32_t)(now_ms - g_summon_brake_last_trigger_ms) >= kSummonGuard.brake_cooldown_ms);
+    if (brake_rising_edge && cooldown_ok && g_state.summon_unlock && !g_state.summon_auto_off_drive) {
+        g_state.summon_auto_off_drive = true;
+        g_state.summon_auto_off_ms = now_ms;
+        g_summon_brake_last_trigger_ms = now_ms;
+        summon_restore_reset_state();
+        disabled = true;
+    }
+    state_exit();
+
+    if (disabled) {
+        Serial.println("[SAFE] Summon EU Unlock temp-disabled: brake rising edge (0->1)");
+    }
+    maybe_restore_summon_runtime_guard(now_ms);
+}
+
 
 static constexpr uint8_t GEAR_SEQUENCE_MAX = 4;
 static uint8_t g_gear_sequence[GEAR_SEQUENCE_MAX] = {};
@@ -1156,6 +1271,13 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
     if (frame.id == CAN_ID_BMS_SOC)     { state_enter(); fsd_handle_bms_soc(&g_state, &frame);     state_exit(); return; }
     if (frame.id == CAN_ID_BMS_THERMAL) { state_enter(); fsd_handle_bms_thermal(&g_state, &frame); state_exit(); return; }
 
+    // DI_state parser (0x286): read-only state feed for UI/status.
+    // NOTE: do NOT use speed>0 to disable Summon; that conflicts with Summon flow.
+    if (frame.id == CAN_ID_DI_STATE && frame.dlc >= 3) {
+        summon_guard_on_di_state(frame, millis());
+        return;
+    }
+
     // ── DAS status (read-only, always) — gating for NAG killer ───────────────
     // Skipped when a custom DAS source is configured (#122) — config owns it.
     FSDState das_state = state_snapshot();
@@ -1191,9 +1313,6 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         FSDState s = state_snapshot();
         uint32_t now_ms = millis();
 
-        // Safety trigger: when the stalk reports a drive-gear engage action
-        // (0x229 GearLeverPosition FULL_DOWN), temporarily disable Summon EU Unlock
-        // for this runtime session only (no NVS write).
         if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
             uint8_t gear_pos =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
@@ -1202,19 +1321,6 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
             g_state.gear_lever_pos = gear_pos;
             g_state.gear_lever_last_ms = now_ms;
             state_exit();
-            if (gear_pos == SIG_GEAR_LEVER_FULL_DOWN) {
-                bool disabled = false;
-                state_enter();
-                if (g_state.summon_unlock && !g_state.summon_auto_off_drive) {
-                    g_state.summon_auto_off_drive = true;
-                    g_state.summon_auto_off_ms = now_ms;
-                    disabled = true;
-                }
-                state_exit();
-                if (disabled) {
-                    Serial.println("[SAFE] Summon EU Unlock temp-disabled: 0x229 FULL_DOWN (drive gear)");
-                }
-            }
         }
 
         if (s.hw_version != TeslaHW_HW3 && s.hw_version != TeslaHW_Legacy) return;
@@ -1270,11 +1376,7 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         return;
     }
     if (frame.id == CAN_ID_ESP_STATUS) {
-        uint32_t now_ms = millis();
-        state_enter();
-        fsd_handle_esp_status(&g_state, &frame);
-        if (g_state.driver_brake_applied) g_cont_ap_last_brake_ms = now_ms;
-        state_exit();
+        summon_guard_on_esp_status(frame, millis());
         return;
     }
     // Steering angle (0x129) — read-only, feeds the Soft Engage gate (#108).

@@ -1043,8 +1043,10 @@ void fsd_handle_ui_warning(FSDState* state, const CANFRAME* frame) {
 
 void fsd_handle_steering_angle(FSDState* state, const CANFRAME* frame) {
     if(frame->data_lenght < 4) return;
-    // Common Tesla steering angle: 16-bit signed LE at byte0-1, factor 0.1
-    int16_t raw = (int16_t)(((uint16_t)frame->buffer[1] << 8) | frame->buffer[0]);
+    // Common Tesla steering angle variant: 14-bit signed LE at byte0-1, factor 0.1
+    uint16_t packed = (uint16_t)(((uint16_t)frame->buffer[1] << 8) | frame->buffer[0]);
+    int16_t raw = (int16_t)(packed & 0x3FFFu);
+    if((raw & 0x2000) != 0) raw = (int16_t)(raw - 0x4000);
     state->steering_angle_deg = raw * 0.1f;
 }
 
@@ -1236,8 +1238,10 @@ void fsd_apply_signal_config(FSDState* state, const CANFRAME* frame, uint32_t no
     if(state->cfg_steer_id != 0 && frame->canId == state->cfg_steer_id) {
         if(state->cfg_steer_hi < 8 && state->cfg_steer_lo < 8 &&
            frame->data_lenght > state->cfg_steer_hi && frame->data_lenght > state->cfg_steer_lo) {
-            int16_t raw = (int16_t)(((uint16_t)frame->buffer[state->cfg_steer_hi] << 8) |
-                                    frame->buffer[state->cfg_steer_lo]);
+            uint16_t packed = (uint16_t)(((uint16_t)frame->buffer[state->cfg_steer_hi] << 8) |
+                                         frame->buffer[state->cfg_steer_lo]);
+            int16_t raw = (int16_t)(packed & 0x3FFFu);
+            if((raw & 0x2000) != 0) raw = (int16_t)(raw - 0x4000);
             state->steering_angle_deg = (float)raw * 0.1f;
             state->steer_ctx_seen_ms = now_ms;
         }

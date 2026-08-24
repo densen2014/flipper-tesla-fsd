@@ -780,11 +780,13 @@ bool fsd_abort_guard_allows(const FSDState *state) {
     return !(state->abort_guard && state->abort_guard_latched);
 }
 
-// SCCM_steeringAngleSensor (0x129): 16-bit signed LE at byte0-1, factor 0.1 deg.
+// SCCM_steeringAngleSensor (0x129): 14-bit signed LE at byte0-1, factor 0.1 deg.
 void fsd_handle_steering_angle(FSDState *state, const CanFrame *frame) {
     if (frame->dlc < 4) return;
-    int16_t raw = (int16_t)(((uint16_t)frame->data[1] << 8) | frame->data[0]);
-    state->steering_angle_deg = (float)raw * 0.1f;
+    uint16_t packed = (uint16_t)(((uint16_t)frame->data[1] << 8) | frame->data[0]);
+    int16_t raw14 = (int16_t)(packed & 0x3FFFu);
+    if ((raw14 & 0x2000) != 0) raw14 = (int16_t)(raw14 - 0x4000);
+    state->steering_angle_deg = (float)raw14 * 0.1f;
 }
 
 void fsd_handle_esp_status(FSDState *state, const CanFrame *frame) {
