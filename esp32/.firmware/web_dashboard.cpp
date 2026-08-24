@@ -499,9 +499,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">Summon EU Unlock</span>
     <label class="sw"><input type="checkbox" id="swSummon" onchange="cmd('summon_unlock',this.checked)"><span class="sl2"></span></label>
   </div>
-  <div id="summonAutoOffHint" style="display:none;color:var(--yellow);font-size:11px;line-height:1.35;padding:0 0 8px">
-    Temporarily disabled on brake rising edge (0->1), with ~2.5s cooldown. Auto-restore requires: moved once, then full stop hold (~5s), with minimum lock (~30s).
-    <span id="summonAutoOffAgo"></span>
+  <div id="summonAutoOffHint" style="display:none;color:var(--text2);font-size:11px;line-height:1.35;padding:0 0 8px">
+    Summon status: <span id="summonAutoOffState">Enabled</span>
+    <span id="summonAutoOffAgo"></span><br>
+    Tip: toggle OFF then ON to override temporary disabled state.
   </div>
   <div class="row">
     <span class="lbl">Continue on Green<br><small style="color:var(--muted)">pairs with TLSSC</small></span>
@@ -852,16 +853,24 @@ function updateControlsSummary(d){
 function syncSummonAutoOff(d){
   var box=document.getElementById('summonAutoOffHint');
   var ago=document.getElementById('summonAutoOffAgo');
-  if(!box||!ago)return;
-  if(!d.summon_auto_off_drive){
+  var st=document.getElementById('summonAutoOffState');
+  if(!box||!ago||!st)return;
+  if(!d.summon_unlock){
     box.style.display='none';
     ago.textContent='';
     return;
   }
   box.style.display='block';
+  if(d.summon_auto_off_drive){
+    st.textContent='Temporarily disabled';
+    st.style.color='var(--yellow)';
+  }else{
+    st.textContent='Enabled';
+    st.style.color='var(--accent)';
+  }
   var ms=(d.summon_auto_off_ms||0);
   var up=(d.uptime_s||0)*1000;
-  if(ms>0&&up>=ms){
+  if(d.summon_auto_off_drive && ms>0&&up>=ms){
     var sec=Math.floor((up-ms)/1000);
     ago.textContent='(' + sec + 's ago)';
   }else{
