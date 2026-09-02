@@ -1,0 +1,12 @@
+{
+  "name": "flipper-tesla-fsd-web-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node extractor.mjs --check"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
