@@ -158,6 +158,13 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 /* ── Cards ── */
 .card{background:var(--card);border-radius:16px;padding:16px;
   margin-bottom:12px;border:1px solid var(--border)}
+.card>summary{position:relative;cursor:pointer;list-style:none}
+.card>summary::-webkit-details-marker{display:none}
+.card>summary .card-head{margin-bottom:0}
+.card>summary:after{content:"";position:absolute;right:18px;top:9px;width:9px;height:9px;
+  border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);
+  transform:rotate(45deg);transition:transform .2s}
+{transform:rotate(225deg);top:9px}
 .card-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .config-section{background:var(--card);border:1px solid var(--border);
   border-radius:16px;margin-bottom:12px;overflow:hidden}
@@ -374,6 +381,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">CAN Vehicle</span>
     <span class="pill off" id="canVeh"><span class="pd"></span>--</span>
   </div>
+</div>
+
+<details class="card" open>
+  <summary><div class="card-head"><div class="icon ic-d">V</div><h2>Vehicle Status</h2></div></summary>
   <div class="row">
     <span class="lbl">Vehicle Speed</span>
     <span class="pill off" id="vehicleSpeed"><span class="pd"></span>--</span>
@@ -386,7 +397,11 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">Brake</span>
     <span class="pill off" id="brakeStatus"><span class="pd"></span>--</span>
   </div>
-</div>
+  <div class="row">
+    <span class="lbl">Turn Signal</span>
+    <span class="pill off" id="turnSignal"><span class="pd"></span>--</span>
+  </div>
+</details>
 
 <!-- Battery -->
 <div class="card">
@@ -988,6 +1003,10 @@ function upd(d){
   pill('vehicleGear', gearSeen, gearSeen?(gearNames[d.vehicle_gear]||'Unknown'):'Waiting');
   var brakeSeen=d.brake_status_seen===true;
   pill('brakeStatus', brakeSeen, brakeSeen?(d.driver_brake_applied?'Pressed':'Released'):'Waiting');
+  var turnSeen=d.turn_status_seen===true;
+  var turnLabel=turnSeen ? ((d.left_turn_active?'L':'')+(d.right_turn_active?'R':'' )||'Off') : 'Waiting';
+  pill('turnSignal', turnSeen && !!(d.left_turn_active||d.right_turn_active),
+    turnLabel);
   pill('bmsSt', d.bms && d.bms.seen, (d.bms && d.bms.seen)?'Live':'Waiting Frames');
   var bF=document.getElementById('bmsFrames');
   if(bF) bF.textContent='HV:'+(d.bms_hv_seen||0)+' SOC:'+(d.bms_soc_seen||0)+' TH:'+(d.bms_thermal_seen||0);
@@ -1649,6 +1668,10 @@ static String build_json() {
     j += "\"summon_unlock\":"; j += state.summon_unlock                ? "true" : "false"; j += ',';
     j += "\"driver_brake_applied\":"; j += state.driver_brake_applied  ? "true" : "false"; j += ',';
     j += "\"brake_status_seen\":"; j += state.brake_status_seen        ? "true" : "false"; j += ',';
+    j += "\"left_turn_active\":"; j += state.left_turn_active          ? "true" : "false"; j += ',';
+    j += "\"right_turn_active\":"; j += state.right_turn_active        ? "true" : "false"; j += ',';
+    j += "\"turn_status_seen\":"; j += state.turn_status_seen          ? "true" : "false"; j += ',';
+    j += "\"steering_angle_deg\":"; j += String(state.steering_angle_deg); j += ',';
     j += "\"speed_seen\":"; j += state.speed_seen                      ? "true" : "false"; j += ',';
     j += "\"vehicle_speed_kph\":"; j += vehicle_speed_s;                j += ',';
     j += "\"di_digital_speed\":"; j += (int)state.di_digital_speed;     j += ',';

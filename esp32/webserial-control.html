@@ -35,6 +35,21 @@
       padding: 14px;
       margin-bottom: 12px;
     }
+    details.card > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    details.card > summary::-webkit-details-marker {
+      display: none;
+    }
+    details.card > summary::after {
+      content: "+";
+      float: right;
+      color: var(--muted);
+    }
+    details.card[open] > summary::after {
+      content: "";
+    }
     h1 {
       margin: 0 0 12px;
       font-size: 1.2rem;
@@ -172,14 +187,23 @@
       <h2>Live Status</h2>
       <div class="status-grid">
         <div class="kv"><div class="k">Mode</div><div class="v" id="stMode">--</div></div>
-        <div class="kv"><div class="k">Vehicle Speed</div><div class="v" id="stSpeed">--</div></div>
         <div class="kv"><div class="k">Gear Lever</div><div class="v" id="stGear">--</div></div>
-        <div class="kv"><div class="k">Brake</div><div class="v" id="stBrake">--</div></div>
         <div class="kv"><div class="k">Pedal</div><div class="v" id="stPedal">--</div></div>
         <div class="kv"><div class="k">Summon EU Unlock</div><div class="v" id="stSummon">--</div></div>
       </div>
       <div class="hint" id="stUpdated" style="margin-top: 8px;">No status yet.</div>
     </div>
+
+    <details class="card" open>
+      <summary><h2>Vehicle Status</h2></summary>
+      <div class="status-grid">
+        <div class="kv"><div class="k">Vehicle Speed</div><div class="v" id="stSpeed">--</div></div>
+        <div class="kv"><div class="k">UI Speed</div><div class="v" id="stUiSpeed">--</div></div>
+        <div class="kv"><div class="k">Vehicle Gear</div><div class="v" id="stVehicleGear">--</div></div>
+        <div class="kv"><div class="k">Brake</div><div class="v" id="stBrake">--</div></div>
+        <div class="kv"><div class="k">Turn Signal</div><div class="v" id="stTurn">--</div></div>
+      </div>
+    </details>
 
     <div class="card">
       <h2>Send Raw JSON Line</h2>
@@ -209,10 +233,13 @@
     const logEl = document.getElementById("log");
     const stMode = document.getElementById("stMode");
     const stSpeed = document.getElementById("stSpeed");
+    const stUiSpeed = document.getElementById("stUiSpeed");
+    const stVehicleGear = document.getElementById("stVehicleGear");
     const stGear = document.getElementById("stGear");
     const stBrake = document.getElementById("stBrake");
     const stPedal = document.getElementById("stPedal");
     const stSummon = document.getElementById("stSummon");
+    const stTurn = document.getElementById("stTurn");
     const stUpdated = document.getElementById("stUpdated");
 
     let port = null;
@@ -247,12 +274,22 @@
     function applyStatus(s) {
       const active = Number(s.op_mode) === 1;
       setValue(stMode, active ? "Active" : "Listen-Only", active ? "ok" : "warn");
-      const speed = s.speed_seen ? (Number(s.vehicle_speed_kph).toFixed(1) + " km/h") : "not seen";
-      setValue(stSpeed, speed, s.speed_seen ? "" : "warn");
+      const speedSeen = s.speed_fresh !== undefined ? s.speed_fresh : s.speed_seen;
+      setValue(stSpeed, speedSeen ? (Number(s.vehicle_speed_kph).toFixed(1) + " km/h") : "not seen",
+        speedSeen ? "" : "warn");
+      setValue(stUiSpeed, s.speed_seen ? (Number(s.ui_speed || 0) + " km/h") : "not seen",
+        s.speed_seen ? "" : "warn");
+      const vehicleGearNames = { 1: "P", 2: "R", 3: "N", 4: "D" };
+      const vehicleGear = s.vehicle_gear_seen
+        ? (vehicleGearNames[s.vehicle_gear] || "unknown") : "not seen";
+      setValue(stVehicleGear, vehicleGear, s.vehicle_gear_seen ? "" : "warn");
       const gear = s.gear_lever_seen ? gearLabel(s.gear_lever_pos, s.gear_lever_label) : "not seen";
       setValue(stGear, gear, s.gear_lever_seen ? "" : "warn");
       const brake = s.brake_status_seen ? (s.driver_brake_applied ? "Pressed" : "Released") : "not seen";
       setValue(stBrake, brake, s.driver_brake_applied ? "err" : "");
+      const turnSeen = s.turn_status_seen === true;
+      const turn = turnSeen ? ((s.left_turn_active ? "L" : "") + (s.right_turn_active ? "R" : "") || "Off") : "not seen";
+      setValue(stTurn, turn, turnSeen && (s.left_turn_active || s.right_turn_active) ? "ok" : "");
       const torque = s.di_torque_seen ? Number(s.di_torque_nm).toFixed(1) + " Nm" : "not seen";
       const pedal = s.di_torque_seen ? ((s.pedal_pressed ? "Pressed" : "Released") + " (" + torque + ")") : "not seen";
       setValue(stPedal, pedal, s.pedal_pressed ? "ok" : "");
