@@ -164,7 +164,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .card>summary:after{content:"";position:absolute;right:18px;top:9px;width:9px;height:9px;
   border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);
   transform:rotate(45deg);transition:transform .2s}
-{transform:rotate(225deg);top:9px}
+.card[open]>summary:after{transform:rotate(225deg);top:6px}
 .card-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
 .config-section{background:var(--card);border:1px solid var(--border);
   border-radius:16px;margin-bottom:12px;overflow:hidden}
