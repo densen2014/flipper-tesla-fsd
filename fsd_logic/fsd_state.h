@@ -20,6 +20,12 @@ typedef enum {
     SpeedLimitSource_Acc,
 } SpeedLimitSource;
 
+typedef enum {
+    SummonAutoControl_DriveGearPersistent = 0,
+    SummonAutoControl_BrakeTemporary      = 1,
+    SummonAutoControl_Disabled            = 2,
+} SummonAutoControlMode;
+
 typedef struct FSDState {
     TeslaHWVersion hw_version;
     // Manual HW selection (#110). TeslaHW_Unknown = auto-detect (default); any
@@ -85,6 +91,8 @@ typedef struct FSDState {
     uint8_t rear_defrost_state;  // 0=sna 1=on 2=off (from 0x343)
     float vehicle_speed_kph;     // from 0x257 DI_vehicleSpeed (12-bit, 0.08 factor, -40 offset)
     uint8_t ui_speed;            // from 0x257 DI_uiSpeed (8-bit, display value)
+    uint8_t vehicle_gear;        // from 0x118 DI_gear: 1=P, 2=R, 3=N, 4=D
+    bool vehicle_gear_seen;
     uint8_t steering_tune_mode;  // from 0x370 EPAS3S_currentTuneMode (0-6)
     float torsion_bar_torque_nm; // from 0x370 EPAS3S_torsionBarTorque
     bool torsion_bar_torque_seen;
@@ -204,6 +212,14 @@ typedef struct FSDState {
     // bit19 (EU summon restriction) and sets bit47 (summon enable), on HW3 + HW4.
     // Opt-in, default OFF. // TODO: add Summon EU Unlock to Flipper menu
     bool summon_unlock;
+    // Saved opt-in is kept separate so dashboard runtime overrides cannot leak
+    // into NVS when an unrelated preference is saved later in the same boot.
+    bool summon_unlock_configured;
+    SummonAutoControlMode summon_auto_control;
+    // Runtime-only brake guard. It is deliberately not persisted, so a reboot
+    // restores Summon EU Unlock without requiring user intervention.
+    bool summon_temp_disabled;
+    uint32_t summon_temp_disabled_ms;
     // AP branch/tier selector (0x3FD DAS_autopilotControl mux1, UI_apmv3Branch,
     // bits 40-42 = byte5 bits 0-2). Enum: 0=LIVE 1=STAGE 2=DEV 3=STAGE2 4=EAP
     // 5=DEMO. Opt-in, default OFF (0xFF sentinel = don't touch). Experimental and

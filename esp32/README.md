@@ -54,6 +54,7 @@ All CAN protocol handling from hypery11's Flipper Zero implementation (`fsd_hand
 - **Battery SOC Ring** — animated circular progress bar with color coding (green >60%, yellow >30%, red ≤30%)
 - **BMS Live Data UI hooks** — fields exist in UI/API, but BMS section is currently not working reliably on tested vehicle setup
 - **CAN Bus Stats** — RX frame count, TX modified count, CRC errors, frames/second
+- **Driving Status** — live `0x257` vehicle speed and `0x145` brake-pedal state
 - **HTTP CAN Log Stream** — phone-friendly candump collection via dashboard button; device streams CAN frames over HTTP on port 82 and the browser saves the collected `.dump` file on Stop
 - **Web Controls** — toggle buttons and selectors for:
   - Activate/Stop FSD (Listen-Only ↔ Active mode switch)
@@ -62,6 +63,11 @@ All CAN protocol handling from hypery11's Flipper Zero implementation (`fsd_hand
   - BMS serial output on/off
   - Force FSD toggle
   - Summon EU Unlock (clears the EU AP restriction and enables summon on `0x3FD` mux1)
+  - FSD Status runtime control temporarily starts or stops Summon EU Unlock without changing the saved setting; reboot restores the saved state
+  - Summon Auto Control selector:
+    - **Off** — leaves Summon EU Unlock enabled until changed manually
+    - **D gear** — disables Summon EU Unlock and saves the disabled state
+    - **Brake** — temporarily suppresses Summon injection after brake apply; after shifting to P, release and press the brake again to restore it. The suppression is not saved and clears on reboot
   - Continue on Green (proceed through a green light with a lead car; pairs with TLSSC)
   - Right-Hand Drive (RHD) override (`0x3F8` driving-side — RHD markets only)
   - Telemetry Off (experimental) (clears reachable telemetry-enable flags on `0x3F8` / `0x3FD` mux1)
@@ -103,7 +109,7 @@ This avoids a manual AP/DAS profile. The dashboard hides the chime toggle until 
 | **Speed Profile** | `0x3FD` mux2 | Follow-distance stalk maps to speed offset |
 | **DAS Status** | `0x399` or `0x39B` | Runtime HW version selects status source |
 | **ISA Chime Suppress** | `0x399` | HW4 only; disabled for Legacy/HW3 because `0x399` is DAS status |
-| **Summon EU Unlock** | `0x3FD` mux1 | Clears EU AP restriction (bit19) + enables summon (bit47) |
+| **Summon EU Unlock** | `0x3FD` mux1 | Clears EU AP restriction (bit19) + enables summon (bit47); selectable D-gear persistent or brake-triggered runtime-only auto control |
 | **Continue on Green** | `0x3FD` mux0 | Proceed through a green light with a lead car (bit39); pairs with TLSSC |
 | **AP Branch/Tier** | `0x3FD` mux1 | Experimental apmv3 branch/tier hint (bits 40-42); off by default |
 | **RHD Override** | `0x3F8` | Right-Hand Drive driving-side override (bits 40-41); RHD markets only |

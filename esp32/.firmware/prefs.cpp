@@ -29,7 +29,14 @@ void prefs_load(FSDState *state) {
     state->tlssc_restore            = g_prefs.getBool("tlssc",  false);
     state->precondition             = g_prefs.getBool("precond",false);
     state->emergency_vehicle_detect = g_prefs.getBool("emrg",   false);
-    state->summon_unlock            = g_prefs.getBool("summon", false);
+    state->summon_unlock_configured = g_prefs.getBool("summon", false);
+    state->summon_unlock            = state->summon_unlock_configured;
+    uint8_t summon_auto_control     = g_prefs.getUChar(
+        "sumguard", (uint8_t)SummonAutoControl_DriveGearPersistent);
+    state->summon_auto_control =
+        summon_auto_control <= (uint8_t)SummonAutoControl_Disabled
+            ? (SummonAutoControlMode)summon_auto_control
+            : SummonAutoControl_DriveGearPersistent;
     state->continue_on_green        = g_prefs.getBool("cog",    false);
     state->assist_tlssc_bit38       = g_prefs.getBool("tlssc38", false);
     state->assist_rhd_override       = g_prefs.getBool("rhd",    false);
@@ -73,10 +80,11 @@ void prefs_load(FSDState *state) {
     state->cfg_steer_hi      = g_prefs.getUChar("cshi",   1);
     state->cfg_steer_lo      = g_prefs.getUChar("cslo",   0);
 
-    Serial.printf("[NVS] Loaded: FSDUnlock=%d NAG=%d ContinuousAP=%d IgnoreOTA=%d China=%d Chime=%d Summon=%d COG=%d TLSSC38=%d RHD=%d TelOff=%d APMv3=%d TrkMode=%d/%u/%u/%d/%d Sleep=%u AP=\"%s\" STA=\"%s\" HIDDEN=%d\n",
+    Serial.printf("[NVS] Loaded: FSDUnlock=%d NAG=%d ContinuousAP=%d IgnoreOTA=%d China=%d Chime=%d Summon=%d SummonGuard=%d COG=%d TLSSC38=%d RHD=%d TelOff=%d APMv3=%d TrkMode=%d/%u/%u/%d/%d Sleep=%u AP=\"%s\" STA=\"%s\" HIDDEN=%d\n",
                   state->fsd_unlock, state->nag_killer, state->continuous_ap, state->ignore_ota,
                   state->china_mode, state->suppress_speed_chime, state->summon_unlock,
-                  state->continue_on_green, state->assist_tlssc_bit38, state->assist_rhd_override, state->assist_telemetry_off,
+                  (int)state->summon_auto_control, state->continue_on_green,
+                  state->assist_tlssc_bit38, state->assist_rhd_override, state->assist_telemetry_off,
                   state->apmv3_branch, state->track_mode_inject, state->track_rotation_pct,
                   state->track_stability_pct, state->track_post_cooling, state->track_cmp_overclock,
                   state->sleep_idle_ms, state->wifi_ssid, state->wifi_sta_ssid,
@@ -111,7 +119,8 @@ void prefs_save(const FSDState *state) {
     g_prefs.putBool("tlssc",  state->tlssc_restore);
     g_prefs.putBool("precond",state->precondition);
     g_prefs.putBool("emrg",   state->emergency_vehicle_detect);
-    g_prefs.putBool("summon", state->summon_unlock);
+    g_prefs.putBool("summon", state->summon_unlock_configured);
+    g_prefs.putUChar("sumguard", (uint8_t)state->summon_auto_control);
     g_prefs.putBool("cog",    state->continue_on_green);
     g_prefs.putBool("tlssc38", state->assist_tlssc_bit38);
     g_prefs.putBool("rhd",    state->assist_rhd_override);

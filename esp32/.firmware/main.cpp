@@ -1195,7 +1195,9 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         // applies on HW3 + HW4, and that gate returns early on HW4. Edge-
         // triggered by the summon_unlock==true guard: NVS is written only on the
         // true→false flip, so repeated full-down 0x229 frames can't thrash NVS.
-        if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
+        FSDState guard_state = state_snapshot();
+        if (guard_state.summon_auto_control == SummonAutoControl_DriveGearPersistent &&
+            frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
             uint8_t detent =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
                 SIG_GEAR_LEVER_POS_MASK;
@@ -1205,6 +1207,7 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
                 state_enter();
                 if (g_state.summon_unlock) {
                     g_state.summon_unlock = false;
+                    g_state.summon_unlock_configured = false;
                     saved = g_state;
                     disabled = true;
                 }
@@ -1271,12 +1274,50 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         state_exit();
         return;
     }
+    if (frame.id == CAN_ID_DI_SYSTEM) {
+        state_enter();
+        fsd_handle_di_system(&g_state, &frame);
+        state_exit();
+        return;
+    }
+    if (frame.id == CAN_ID_DI_SPEED) {
+        state_enter();
+        fsd_handle_di_speed(&g_state, &frame);
+        g_state.last_speed_tick_ms = millis();
+        state_exit();
+        return;
+    }
     if (frame.id == CAN_ID_ESP_STATUS) {
         uint32_t now_ms = millis();
+        bool temp_disabled = false;
+        bool temp_restored = false;
         state_enter();
+        bool brake_was_applied = g_state.driver_brake_applied;
+        bool summon_was_temp_disabled = g_state.summon_temp_disabled;
         fsd_handle_esp_status(&g_state, &frame);
         if (g_state.driver_brake_applied) g_cont_ap_last_brake_ms = now_ms;
+        if (g_state.summon_auto_control == SummonAutoControl_BrakeTemporary &&
+            !brake_was_applied && g_state.driver_brake_applied) {
+            if (g_state.summon_unlock && summon_was_temp_disabled &&
+                g_state.vehicle_gear_seen &&
+                g_state.vehicle_gear == SIG_DI_GEAR_PARK) {
+                g_state.summon_temp_disabled = false;
+                g_state.summon_temp_disabled_ms = 0u;
+                temp_restored = true;
+            } else if (g_state.summon_unlock && !summon_was_temp_disabled) {
+                g_state.summon_temp_disabled = true;
+                g_state.summon_temp_disabled_ms = now_ms;
+                temp_disabled = true;
+            }
+        }
         state_exit();
+        if (temp_disabled) {
+            Serial.println("[SAFETY] Summon EU Unlock temporarily disabled on brake apply");
+            can_dump_log("[SAFETY] Summon EU Unlock temporarily disabled on brake apply");
+        } else if (temp_restored) {
+            Serial.println("[SAFETY] Summon EU Unlock restored by parked brake apply");
+            can_dump_log("[SAFETY] Summon EU Unlock restored by parked brake apply");
+        }
         return;
     }
     // Steering angle (0x129) — read-only, feeds the Soft Engage gate (#108).

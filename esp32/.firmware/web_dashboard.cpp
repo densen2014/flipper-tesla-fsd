@@ -204,6 +204,7 @@ details input.cgn{width:38px;margin-left:4px}
 .pill.on{background:rgba(0,212,170,.14);color:var(--accent)}
 .pill.off{background:rgba(71,85,105,.22);color:var(--text3)}
 .pill.warn{background:rgba(255,107,107,.14);color:var(--red)}
+.speed-pill{border:1px solid rgba(0,212,170,.38)}
 .pd{width:6px;height:6px;border-radius:50%;flex-shrink:0;
   background:currentColor;box-shadow:0 0 5px currentColor}
 
@@ -371,6 +372,22 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">CAN Vehicle</span>
     <span class="pill off" id="canVeh"><span class="pd"></span>--</span>
   </div>
+  <div class="row">
+    <span class="lbl">Vehicle Speed</span>
+    <span class="pill off speed-pill" id="vehicleSpeed"><span class="pd"></span>--</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Brake Pedal</span>
+    <span class="pill off" id="brakePedal"><span class="pd"></span>--</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Vehicle Gear</span>
+    <span class="pill off" id="vehicleGear"><span class="pd"></span>--</span>
+  </div>
+  <div class="row" id="summonRuntimeRow" style="display:none">
+    <span class="lbl">Summon</span>
+    <button type="button" class="pill off" id="summonRuntimeSt" onclick="toggleSummonRuntime()" style="border:0;cursor:pointer"><span class="pd"></span>--</button>
+  </div>
 </div>
 
 <!-- Battery -->
@@ -498,6 +515,17 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
   <div class="row">
     <span class="lbl">Summon EU Unlock</span>
     <label class="sw"><input type="checkbox" id="swSummon" onchange="cmd('summon_unlock',this.checked)"><span class="sl2"></span></label>
+  </div>
+  <div class="row">
+    <span class="lbl">Summon Auto Control<br><small style="color:var(--muted)">Brake mode is temporary for this boot only.</small></span>
+    <select id="selSummonGuard" onchange="cmd('summon_auto_control',parseInt(this.value,10))">
+      <option value="2">Off: no automatic control</option>
+      <option value="0">D gear: disable &amp; save</option>
+      <option value="1">Brake: temporary disable</option>
+    </select>
+  </div>
+  <div id="summonTempHint" style="display:none;color:var(--yellow);font-size:11px;line-height:1.35;padding:0 0 8px">
+    Summon injection is temporarily disabled. Shift to P, release the brake, then press it again to restore Summon.
   </div>
   <div class="row">
     <span class="lbl">Continue on Green<br><small style="color:var(--muted)">pairs with TLSSC</small></span>
@@ -966,6 +994,11 @@ function upd(d){
 
   pill('nagSt', d.nag_killer, d.nag_killer?'ON':'OFF');
   pill('canVeh', d.can_vehicle_detected, d.can_vehicle_detected?'Detected':'No CAN Traffic');
+  pill('vehicleSpeed',!!d.speed_fresh,d.speed_fresh?(d.vehicle_speed_kph||0).toFixed(1)+' km/h':'--');
+  pill('brakePedal',!!d.driver_brake_applied,d.brake_status_seen?(d.driver_brake_applied?'PRESSED':'Released'):'--');
+  var gearNames={1:'P',2:'R',3:'N',4:'D'};
+  var gear=gearNames[d.vehicle_gear]||(d.vehicle_gear_seen?'Unknown':'--');
+  pill('vehicleGear',!!gearNames[d.vehicle_gear],gear);
   pill('bmsSt', d.bms && d.bms.seen, (d.bms && d.bms.seen)?'Live':'Waiting Frames');
   var bF=document.getElementById('bmsFrames');
   if(bF) bF.textContent='HV:'+(d.bms_hv_seen||0)+' SOC:'+(d.bms_soc_seen||0)+' TH:'+(d.bms_thermal_seen||0);
@@ -1011,7 +1044,19 @@ function upd(d){
   if(document.getElementById('swChime')) document.getElementById('swChime').checked=d.suppress_speed_chime;
   if(document.getElementById('rowChime')) document.getElementById('rowChime').style.display=d.isa_speed_enabled?'flex':'none';
   if(document.getElementById('swTlssc')) document.getElementById('swTlssc').checked=d.tlssc_restore;
-  if(document.getElementById('swSummon')) document.getElementById('swSummon').checked=d.summon_unlock;
+  if(document.getElementById('swSummon')) document.getElementById('swSummon').checked=d.summon_unlock_configured;
+  var summonRuntimeVisible=!!d.summon_unlock_configured;
+  var summonRuntimeRow=document.getElementById('summonRuntimeRow');
+  if(summonRuntimeRow) summonRuntimeRow.style.display=summonRuntimeVisible?'flex':'none';
+  if(summonRuntimeVisible){
+    var summonRuntimeActive=!!d.summon_unlock&&!d.summon_temp_disabled;
+    pill('summonRuntimeSt',summonRuntimeActive,summonRuntimeActive?'ON':'OFF');
+    document.getElementById('summonRuntimeSt').dataset.active=summonRuntimeActive?'1':'0';
+  }
+  var summonGuardSel=document.getElementById('selSummonGuard');
+  if(summonGuardSel && d.summon_auto_control!==undefined && document.activeElement!==summonGuardSel) summonGuardSel.value=String(d.summon_auto_control);
+  var summonTempHint=document.getElementById('summonTempHint');
+  if(summonTempHint) summonTempHint.style.display=d.summon_temp_disabled?'block':'none';
   if(document.getElementById('swCog')) document.getElementById('swCog').checked=d.continue_on_green;
   if(document.getElementById('swTlssc38')) document.getElementById('swTlssc38').checked=d.assist_tlssc_bit38;
   if(document.getElementById('swRhd')) document.getElementById('swRhd').checked=d.assist_rhd_override;
@@ -1247,6 +1292,14 @@ function cmd(c,v){
   }
 }
 function toggleMode(){ cmd('mode',null); }
+function toggleSummonRuntime(){
+  var btn=document.getElementById('summonRuntimeSt');
+  if(!btn)return;
+  var enabled=btn.dataset.active!=='1';
+  btn.dataset.active=enabled?'1':'0';
+  pill('summonRuntimeSt',enabled,enabled?'ON':'OFF');
+  cmd('summon_runtime',enabled);
+}
 function gv(id){ var e=document.getElementById(id); return (e&&e.value.trim()!=='')?e.value.trim():'0'; }
 function saveSigCfg(){
   var csv=[gv('cgDid'),gv('cgApB'),gv('cgApS'),gv('cgApM'),
@@ -1522,11 +1575,14 @@ static String build_json() {
     FSDState state;
     if (!state_copy(&state)) return "{}";
 
-    uint32_t uptime_s = (millis() - g_start_ms) / 1000;
+    uint32_t now_ms = millis();
+    uint32_t uptime_s = (now_ms - g_start_ms) / 1000;
     bool can_vehicle_detected = false;
     if (state.rx_count > 0) {
-        can_vehicle_detected = (millis() - g_last_can_seen_ms) <= CAN_VEHICLE_ALIVE_MS;
+        can_vehicle_detected = (now_ms - g_last_can_seen_ms) <= CAN_VEHICLE_ALIVE_MS;
     }
+    bool speed_fresh = state.speed_seen &&
+        (now_ms - state.last_speed_tick_ms) <= CAN_VEHICLE_ALIVE_MS;
 
     // BMS sub-object
     char bms[128];
@@ -1560,6 +1616,8 @@ static String build_json() {
     // fps as fixed-point string
     char fps_s[12];
     snprintf(fps_s, sizeof(fps_s), "%.1f", g_fps);
+    char vehicle_speed_s[12];
+    snprintf(vehicle_speed_s, sizeof(vehicle_speed_s), "%.1f", state.vehicle_speed_kph);
 
     String j;
     bool isa_speed_enabled = state.hw_version == TeslaHW_HW4;
@@ -1609,6 +1667,10 @@ static String build_json() {
     j += "\"suppress_speed_chime\":"; j += state.suppress_speed_chime  ? "true" : "false"; j += ',';
     j += "\"tlssc_restore\":"; j += state.tlssc_restore                ? "true" : "false"; j += ',';
     j += "\"summon_unlock\":"; j += state.summon_unlock                ? "true" : "false"; j += ',';
+    j += "\"summon_unlock_configured\":"; j += state.summon_unlock_configured ? "true" : "false"; j += ',';
+    j += "\"summon_auto_control\":"; j += (int)state.summon_auto_control; j += ',';
+    j += "\"summon_temp_disabled\":"; j += state.summon_temp_disabled ? "true" : "false"; j += ',';
+    j += "\"summon_temp_disabled_ms\":"; j += state.summon_temp_disabled_ms; j += ',';
     j += "\"continue_on_green\":"; j += state.continue_on_green         ? "true" : "false"; j += ',';
     j += "\"assist_tlssc_bit38\":"; j += state.assist_tlssc_bit38       ? "true" : "false"; j += ',';
     j += "\"assist_rhd_override\":"; j += state.assist_rhd_override      ? "true" : "false"; j += ',';
@@ -1626,6 +1688,13 @@ static String build_json() {
     j += "\"display_timeout_s\":";  j += state.display_timeout_s;       j += ',';
 #endif
     j += "\"can_vehicle_detected\":"; j += can_vehicle_detected       ? "true" : "false"; j += ',';
+    j += "\"vehicle_speed_kph\":"; j += vehicle_speed_s;                j += ',';
+    j += "\"speed_seen\":"; j += state.speed_seen                    ? "true" : "false"; j += ',';
+    j += "\"speed_fresh\":"; j += speed_fresh                        ? "true" : "false"; j += ',';
+    j += "\"driver_brake_applied\":"; j += state.driver_brake_applied ? "true" : "false"; j += ',';
+    j += "\"brake_status_seen\":"; j += state.brake_status_seen       ? "true" : "false"; j += ',';
+    j += "\"vehicle_gear\":"; j += state.vehicle_gear;                 j += ',';
+    j += "\"vehicle_gear_seen\":"; j += state.vehicle_gear_seen       ? "true" : "false"; j += ',';
     j += "\"bms_hv_seen\":";   j += state.seen_bms_hv;                 j += ',';
     j += "\"bms_soc_seen\":";  j += state.seen_bms_soc;                j += ',';
     j += "\"bms_thermal_seen\":"; j += state.seen_bms_thermal;          j += ',';
@@ -2052,6 +2121,20 @@ static void ws_event(uint8_t num, WStype_t type,
             Serial.printf("[Web] Suppress Speed Chime: %s\n", enabled ? "ON" : "OFF");
             prefs_save(&saved);
         }
+    } else if (strstr(buf, "\"summon_runtime\"")) {
+        if (vptr) {
+            while (*vptr == ' ' || *vptr == ':') vptr++;
+            bool enabled = (strncmp(vptr, "true", 4) == 0);
+            state_enter();
+            g_state->summon_unlock =
+                g_state->summon_unlock_configured && enabled;
+            g_state->summon_temp_disabled = false;
+            g_state->summon_temp_disabled_ms = 0u;
+            bool active = g_state->summon_unlock;
+            state_exit();
+            Serial.printf("[Web] Summon EU Unlock runtime: %s (not saved)\n",
+                          active ? "ON" : "OFF");
+        }
     } else if (strstr(buf, "\"summon_unlock\"")) {
         if (vptr) {
             while (*vptr == ' ' || *vptr == ':') vptr++;
@@ -2059,10 +2142,34 @@ static void ws_event(uint8_t num, WStype_t type,
             FSDState saved;
             state_enter();
             g_state->summon_unlock = enabled;
+            g_state->summon_unlock_configured = enabled;
+            g_state->summon_temp_disabled = false;
+            g_state->summon_temp_disabled_ms = 0u;
             saved = *g_state;
             state_exit();
             Serial.printf("[Web] Summon EU Unlock: %s\n", enabled ? "ON" : "OFF");
             prefs_save(&saved);
+        }
+    } else if (strstr(buf, "\"summon_auto_control\"")) {
+        if (vptr) {
+            while (*vptr == ' ' || *vptr == ':') vptr++;
+            int mode = atoi(vptr);
+            if (mode >= (int)SummonAutoControl_DriveGearPersistent &&
+                mode <= (int)SummonAutoControl_Disabled) {
+                FSDState saved;
+                state_enter();
+                g_state->summon_auto_control = (SummonAutoControlMode)mode;
+                g_state->summon_temp_disabled = false;
+                g_state->summon_temp_disabled_ms = 0u;
+                saved = *g_state;
+                state_exit();
+                const char *mode_name =
+                    mode == (int)SummonAutoControl_BrakeTemporary ? "BRAKE TEMPORARY" :
+                    mode == (int)SummonAutoControl_Disabled ? "OFF" :
+                    "D-GEAR PERSISTENT";
+                Serial.printf("[Web] Summon Auto Control: %s\n", mode_name);
+                prefs_save(&saved);
+            }
         }
     } else if (strstr(buf, "\"continue_on_green\"")) {
         if (vptr) {
