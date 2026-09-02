@@ -220,6 +220,7 @@
     let reader = null;
     let readLoopRunning = false;
     let statusTimer = null;
+    let statusRequestInFlight = false;
 
     function setStatus(text, cls) {
       connStatus.className = "status " + (cls || "");
@@ -283,7 +284,13 @@
     }
 
     async function requestStatus() {
-      await sendJson({ cmd: "status", value: true });
+      if (statusRequestInFlight || !writer) return;
+      statusRequestInFlight = true;
+      try {
+        await sendJson({ cmd: "status", value: true });
+      } finally {
+        statusRequestInFlight = false;
+      }
     }
 
     async function sendTextLine(text) {
@@ -348,7 +355,12 @@
         setStatus("Connected", "ok");
         appendLog("Connected to serial port");
         readLoop();
-        await requestStatus();
+        // Opening a USB serial port commonly resets the ESP32. Give its
+        // boot log time to finish, then poll repeatedly until a status line
+        // is received instead of losing the first request during reset.
+        window.setTimeout(() => {
+          requestStatus().catch((err) => appendLog(`Status request error: ${err.message || err}`));
+        }, 1200);
         statusTimer = window.setInterval(() => {
           requestStatus().catch((err) => appendLog(`Status poll error: ${err.message || err}`));
         }, 1000);
@@ -384,6 +396,7 @@
       } catch (err) {
         appendLog(`Disconnect warning: ${err.message || err}`);
       }
+      statusRequestInFlight = false;
       setConnectedUi(false);
       setStatus("Disconnected", "warn");
       appendLog("Disconnected");
