@@ -16,6 +16,8 @@
 #include "capability.h"
 #include "profile_match.h"
 #include "prefs.h"
+#include "config.h"
+#include "can_signals.h"
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 #include <WiFi.h>
@@ -32,6 +34,7 @@ static portMUX_TYPE *g_state_mux = nullptr;
 
 static WebServer        g_http(80);
 static WebSocketsServer g_ws(81);
+static bool             g_web_started = false;
 
 static uint32_t g_start_ms    = 0;
 static uint32_t g_last_rx     = 0;
@@ -1517,6 +1520,17 @@ static String json_escape(const char *s) {
     return out;
 }
 
+static const char *gear_detent_name(uint8_t pos) {
+    switch (pos) {
+        case SIG_GEAR_LEVER_CENTER: return "center";
+        case SIG_GEAR_LEVER_HALF_UP: return "half_up";
+        case SIG_GEAR_LEVER_FULL_UP: return "full_up";
+        case SIG_GEAR_LEVER_HALF_DOWN: return "half_down";
+        case SIG_GEAR_LEVER_FULL_DOWN: return "full_down";
+        default: return "unknown";
+    }
+}
+
 // ── JSON builder ──────────────────────────────────────────────────────────────
 static String build_json() {
     FSDState state;
@@ -1563,6 +1577,11 @@ static String build_json() {
 
     String j;
     bool isa_speed_enabled = state.hw_version == TeslaHW_HW4;
+    bool pedal_pressed = state.di_torque_seen && state.di_torque_nm > 5.0f;
+    char di_torque_s[16];
+    char vehicle_speed_s[16];
+    snprintf(di_torque_s, sizeof(di_torque_s), "%.1f", state.di_torque_nm);
+    snprintf(vehicle_speed_s, sizeof(vehicle_speed_s), "%.1f", state.vehicle_speed_kph);
     const char *ap_das_profile =
         (state.hw_version == TeslaHW_HW4) ? "HW4: DAS 0x39B + ISA 0x399" :
         (state.hw_version == TeslaHW_HW3) ? "HW3: DAS 0x399" :
@@ -1609,6 +1628,20 @@ static String build_json() {
     j += "\"suppress_speed_chime\":"; j += state.suppress_speed_chime  ? "true" : "false"; j += ',';
     j += "\"tlssc_restore\":"; j += state.tlssc_restore                ? "true" : "false"; j += ',';
     j += "\"summon_unlock\":"; j += state.summon_unlock                ? "true" : "false"; j += ',';
+    j += "\"driver_brake_applied\":"; j += state.driver_brake_applied  ? "true" : "false"; j += ',';
+    j += "\"brake_status_seen\":"; j += state.brake_status_seen        ? "true" : "false"; j += ',';
+    j += "\"speed_seen\":"; j += state.speed_seen                      ? "true" : "false"; j += ',';
+    j += "\"vehicle_speed_kph\":"; j += vehicle_speed_s;                j += ',';
+    j += "\"di_digital_speed\":"; j += (int)state.di_digital_speed;     j += ',';
+    j += "\"pedal_pressed\":"; j += pedal_pressed                       ? "true" : "false"; j += ',';
+    j += "\"di_torque_seen\":"; j += state.di_torque_seen              ? "true" : "false"; j += ',';
+    j += "\"di_torque_nm\":"; j += di_torque_s;                         j += ',';
+    j += "\"gear_lever_seen\":"; j += state.gear_lever_seen            ? "true" : "false"; j += ',';
+    j += "\"gear_lever_counter_seen\":"; j += state.gear_lever_counter_seen ? "true" : "false"; j += ',';
+    j += "\"gear_lever_pos\":"; j += (int)state.gear_lever_last_pos;   j += ',';
+    j += "\"gear_lever_counter\":"; j += (int)state.gear_lever_last_counter; j += ',';
+    j += "\"gear_lever_last_ms\":"; j += state.gear_lever_last_ms;      j += ',';
+    j += "\"gear_lever_label\":\""; j += gear_detent_name(state.gear_lever_last_pos); j += "\",";
     j += "\"continue_on_green\":"; j += state.continue_on_green         ? "true" : "false"; j += ',';
     j += "\"assist_tlssc_bit38\":"; j += state.assist_tlssc_bit38       ? "true" : "false"; j += ',';
     j += "\"assist_rhd_override\":"; j += state.assist_rhd_override      ? "true" : "false"; j += ',';
@@ -2518,10 +2551,10 @@ static void handle_ota_done() {
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
-void web_dashboard_init(FSDState *state,
-                        CanDriver **can_buses,
-                        uint8_t can_count,
-                        portMUX_TYPE *state_mux) {
+void web_dashboard_bind_control(FSDState *state,
+                                CanDriver **can_buses,
+                                uint8_t can_count,
+                                portMUX_TYPE *state_mux) {
     g_state       = state;
     g_can_buses   = can_buses;
     g_can_count   = can_count;
@@ -2530,6 +2563,13 @@ void web_dashboard_init(FSDState *state,
     g_last_fps_ms = millis();
     g_last_rx     = state ? state->rx_count : 0;
     g_last_can_seen_ms = (state && state->rx_count > 0) ? millis() : 0;
+}
+
+void web_dashboard_init(FSDState *state,
+                        CanDriver **can_buses,
+                        uint8_t can_count,
+                        portMUX_TYPE *state_mux) {
+    web_dashboard_bind_control(state, can_buses, can_count, state_mux);
 
     g_http.on("/",           HTTP_GET,  handle_root);
     g_http.on("/api/status", HTTP_GET,  handle_status);
@@ -2545,16 +2585,176 @@ void web_dashboard_init(FSDState *state,
 
     g_ws.begin();
     g_ws.onEvent(ws_event);
+    g_web_started = true;
 
     Serial.println("[Web] HTTP :80  WS :81 — ready");
+}
+
+static bool serial_json_get_string_value(const char *line,
+                                         const char *key,
+                                         char *out,
+                                         size_t out_len) {
+    if (line == nullptr || key == nullptr || out == nullptr || out_len == 0) return false;
+
+    char key_pat[32];
+    snprintf(key_pat, sizeof(key_pat), "\"%s\"", key);
+    const char *p = strstr(line, key_pat);
+    if (p == nullptr) return false;
+    p = strchr(p, ':');
+    if (p == nullptr) return false;
+    p++;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p != '"') return false;
+    p++;
+
+    size_t i = 0;
+    while (*p && *p != '"' && i + 1 < out_len) out[i++] = *p++;
+    out[i] = '\0';
+    return *p == '"' && i > 0;
+}
+
+static CanDriver *serial_gear_bus() {
+    if (g_can_buses == nullptr || g_can_count == 0) return nullptr;
+    uint8_t index = (GEAR_LEVER_TX_BUS_INDEX < g_can_count) ? GEAR_LEVER_TX_BUS_INDEX : 0u;
+    return g_can_buses[index];
+}
+
+static bool serial_send_gear_pulse(uint8_t detent,
+                                   uint8_t *out_counter,
+                                   const char **out_error) {
+    if (out_error) *out_error = nullptr;
+    FSDState s;
+    if (!state_copy(&s)) {
+        if (out_error) *out_error = "state_unavailable";
+        return false;
+    }
+    if (s.op_mode != OpMode_Active) {
+        if (out_error) *out_error = "listen_only_mode";
+        return false;
+    }
+    if (!s.gear_lever_counter_seen) {
+        if (out_error) *out_error = "gear_counter_unavailable";
+        return false;
+    }
+    uint32_t now = millis();
+    if (s.gear_lever_last_ms == 0u ||
+        (uint32_t)(now - s.gear_lever_last_ms) > GEAR_LEVER_CACHED_COUNTER_MAX_AGE_MS) {
+        if (out_error) *out_error = "gear_counter_stale";
+        return false;
+    }
+
+    CanDriver *bus = serial_gear_bus();
+    if (bus == nullptr) {
+        if (out_error) *out_error = "gear_bus_unavailable";
+        return false;
+    }
+
+    uint8_t c1 = (uint8_t)((s.gear_lever_last_counter + 1u) & SIG_GEAR_LEVER_COUNTER_MASK);
+    uint8_t c2 = (uint8_t)((c1 + 1u) & SIG_GEAR_LEVER_COUNTER_MASK);
+    CanFrame detent_frame;
+    CanFrame center_frame;
+    if (!fsd_build_gear_lever_frame(&detent_frame, detent, c1) ||
+        !fsd_build_gear_lever_frame(&center_frame, SIG_GEAR_LEVER_CENTER, c2)) {
+        if (out_error) *out_error = "gear_build_failed";
+        return false;
+    }
+    if (!bus->send(detent_frame) || !bus->send(center_frame)) {
+        if (out_error) *out_error = "gear_send_failed";
+        return false;
+    }
+
+    state_enter();
+    g_state->gear_lever_last_counter = c2;
+    g_state->gear_lever_counter_seen = true;
+    g_state->gear_lever_last_pos = SIG_GEAR_LEVER_CENTER;
+    g_state->gear_lever_seen = true;
+    g_state->gear_lever_last_ms = now;
+    state_exit();
+
+    if (out_counter) *out_counter = c2;
+    return true;
+}
+
+bool web_dashboard_handle_serial_json(const char *line) {
+    if (line == nullptr) return false;
+
+    while (*line == ' ' || *line == '\t') line++;
+    if (*line != '{') return false;
+    if (strstr(line, "\"cmd\"") == nullptr) return false;
+
+    size_t len = strlen(line);
+    while (len > 0) {
+        char c = line[len - 1];
+        if (c == '\r' || c == '\n' || c == ' ' || c == '\t') len--;
+        else break;
+    }
+
+    if (len == 0) return false;
+    if (g_state == nullptr) {
+        Serial.println("{\"ok\":false,\"error\":\"dashboard_not_ready\"}");
+        return true;
+    }
+
+    char cmd[32] = {};
+    if (!serial_json_get_string_value(line, "cmd", cmd, sizeof(cmd))) {
+        Serial.println("{\"ok\":false,\"error\":\"missing_cmd\"}");
+        return true;
+    }
+    if (strcmp(cmd, "status") == 0) {
+        Serial.println(build_json());
+        return true;
+    }
+    if (strcmp(cmd, "gear") == 0) {
+        char value[32] = {};
+        if (!serial_json_get_string_value(line, "value", value, sizeof(value))) {
+            Serial.println("{\"ok\":false,\"error\":\"missing_gear_value\"}");
+            return true;
+        }
+
+        uint8_t detent = SIG_GEAR_LEVER_CENTER;
+        if (strcmp(value, "down") == 0 || strcmp(value, "drive") == 0 || strcmp(value, "d") == 0) {
+            detent = SIG_GEAR_LEVER_FULL_DOWN;
+        } else if (strcmp(value, "up") == 0 || strcmp(value, "park") == 0 ||
+                   strcmp(value, "reverse") == 0 || strcmp(value, "neutral") == 0 ||
+                   strcmp(value, "p") == 0 || strcmp(value, "r") == 0 || strcmp(value, "n") == 0) {
+            detent = SIG_GEAR_LEVER_FULL_UP;
+        } else {
+            Serial.println("{\"ok\":false,\"error\":\"unsupported_gear_value\"}");
+            return true;
+        }
+
+        uint8_t counter = 0;
+        const char *err = nullptr;
+        if (!serial_send_gear_pulse(detent, &counter, &err)) {
+            Serial.printf("{\"ok\":false,\"error\":\"%s\"}\n", err ? err : "gear_send_failed");
+            return true;
+        }
+        Serial.printf("{\"ok\":true,\"cmd\":\"gear\",\"value\":\"%s\",\"counter\":%u}\n",
+                      value, counter);
+        return true;
+    }
+
+    uint8_t payload[256];
+    if (len >= sizeof(payload)) {
+        Serial.println("{\"ok\":false,\"error\":\"command_too_long\"}");
+        return true;
+    }
+    size_t n = len;
+    memcpy(payload, line, n);
+    payload[n] = '\0';
+    ws_event(0, WStype_TEXT, payload, n);
+    Serial.println("{\"ok\":true}");
+    return true;
 }
 
 void web_dashboard_update() {
     if (g_state == nullptr) return;   // init was never called (WiFi failed)
 
-    g_http.handleClient();
-    g_ws.loop();
-    http_can_stream_update();
+    if (g_web_started) {
+        g_http.handleClient();
+        g_ws.loop();
+        http_can_stream_update();
+    }
 
     // FPS calculation + 1 Hz WebSocket broadcast
     uint32_t now = millis();
@@ -2568,8 +2768,10 @@ void web_dashboard_update() {
         g_last_rx    = rx;
         g_last_fps_ms = now;
 
-        String json = build_json();
-        Serial.printf("[WS] state json=%u bytes\n", (unsigned)json.length());
-        g_ws.broadcastTXT(json.c_str(), json.length());
+        if (g_web_started) {
+            String json = build_json();
+            Serial.printf("[WS] state json=%u bytes\n", (unsigned)json.length());
+            g_ws.broadcastTXT(json.c_str(), json.length());
+        }
     }
 }

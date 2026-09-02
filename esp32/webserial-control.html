@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tesla FSD ESP32 - Web Serial Control</title>
+  <style>
+    :root {
+      --bg: #0a0a1a;
+      --card: #111827;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #00d4aa;
+      --warn: #ffd93d;
+      --err: #ff6b6b;
+      --btn: #1f2937;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 1.2rem;
+    }
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .status {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    button, select, input, textarea {
+      background: var(--btn);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.9rem;
+    }
+    button {
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    textarea {
+      width: 100%;
+      min-height: 84px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      resize: vertical;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 8px;
+    }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 8px;
+    }
+    .kv {
+      background: #0b1020;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+    }
+    .k {
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-bottom: 3px;
+    }
+    .v {
+      font-size: 0.98rem;
+      font-weight: 600;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.35;
+    }
+    pre {
+      margin: 0;
+      max-height: 280px;
+      overflow: auto;
+      background: #0b1020;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 0.8rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Tesla FSD ESP32 - Web Serial Control</h1>
+      <div class="row">
+        <button id="connectBtn">Connect</button>
+        <button id="disconnectBtn" disabled>Disconnect</button>
+        <button id="ipBtn" disabled>Print WiFi URLs (ip)</button>
+        <select id="baud">
+          <option value="115200" selected>115200 baud</option>
+          <option value="921600">921600 baud</option>
+        </select>
+      </div>
+      <div id="connStatus" class="status warn">Disconnected</div>
+      <div class="hint" style="margin-top: 8px;">
+        Works in Chromium browsers with Web Serial support (Chrome / Edge). Use HTTPS or localhost.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Quick Commands</h2>
+      <div class="grid">
+        <button data-cmd="mode" data-value="true">Toggle Listen-Only / Active</button>
+        <button data-cmd="nag" data-value="true">NAG Killer ON</button>
+        <button data-cmd="nag" data-value="false">NAG Killer OFF</button>
+        <button data-cmd="ap_first" data-value="true">AP-First ON</button>
+        <button data-cmd="ap_first" data-value="false">AP-First OFF</button>
+        <button data-cmd="ignore_ota" data-value="true">Ignore OTA ON</button>
+        <button data-cmd="ignore_ota" data-value="false">Ignore OTA OFF</button>
+        <button data-cmd="summon_unlock" data-value="true">Summon EU Unlock ON</button>
+        <button data-cmd="summon_unlock" data-value="false">Summon EU Unlock OFF</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Gear Lever Control (0x229)</h2>
+      <div class="grid">
+        <button data-cmd="gear" data-value="down">Stalk DOWN (Drive request)</button>
+        <button data-cmd="gear" data-value="up">Stalk UP (R/N/P request)</button>
+      </div>
+      <div class="hint" style="margin-top: 8px;">
+        Gear command sends a detent pulse then center pulse using live 0x229 counter. Active mode + fresh counter required.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Live Status</h2>
+      <div class="status-grid">
+        <div class="kv"><div class="k">Mode</div><div class="v" id="stMode">--</div></div>
+        <div class="kv"><div class="k">Vehicle Speed</div><div class="v" id="stSpeed">--</div></div>
+        <div class="kv"><div class="k">Gear Lever</div><div class="v" id="stGear">--</div></div>
+        <div class="kv"><div class="k">Brake</div><div class="v" id="stBrake">--</div></div>
+        <div class="kv"><div class="k">Pedal</div><div class="v" id="stPedal">--</div></div>
+        <div class="kv"><div class="k">Summon EU Unlock</div><div class="v" id="stSummon">--</div></div>
+      </div>
+      <div class="hint" id="stUpdated" style="margin-top: 8px;">No status yet.</div>
+    </div>
+
+    <div class="card">
+      <h2>Send Raw JSON Line</h2>
+      <textarea id="rawInput">{ "cmd": "mode", "value": true }</textarea>
+      <div class="row" style="margin-top: 8px;">
+        <button id="sendRawBtn" disabled>Send JSON</button>
+        <button id="clearLogBtn">Clear Log</button>
+      </div>
+      <div class="hint">Each send is one JSON line with newline ending. Device replies with JSON ack.</div>
+    </div>
+
+    <div class="card">
+      <h2>Serial Log</h2>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+  <script>
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const ipBtn = document.getElementById("ipBtn");
+    const sendRawBtn = document.getElementById("sendRawBtn");
+    const clearLogBtn = document.getElementById("clearLogBtn");
+    const connStatus = document.getElementById("connStatus");
+    const baudSel = document.getElementById("baud");
+    const rawInput = document.getElementById("rawInput");
+    const logEl = document.getElementById("log");
+    const stMode = document.getElementById("stMode");
+    const stSpeed = document.getElementById("stSpeed");
+    const stGear = document.getElementById("stGear");
+    const stBrake = document.getElementById("stBrake");
+    const stPedal = document.getElementById("stPedal");
+    const stSummon = document.getElementById("stSummon");
+    const stUpdated = document.getElementById("stUpdated");
+
+    let port = null;
+    let writer = null;
+    let reader = null;
+    let readLoopRunning = false;
+    let statusTimer = null;
+
+    function setStatus(text, cls) {
+      connStatus.className = "status " + (cls || "");
+      connStatus.textContent = text;
+    }
+
+    function appendLog(line) {
+      const now = new Date().toLocaleTimeString();
+      logEl.textContent += `[${now}] ${line}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setValue(el, text, cls) {
+      el.textContent = text;
+      el.className = "v" + (cls ? " " + cls : "");
+    }
+
+    function gearLabel(pos, fallback) {
+      if (typeof fallback === "string" && fallback) return fallback;
+      const map = { 0: "center", 1: "half_up", 2: "full_up", 3: "half_down", 4: "full_down" };
+      return map[pos] || "unknown";
+    }
+
+    function applyStatus(s) {
+      const active = Number(s.op_mode) === 1;
+      setValue(stMode, active ? "Active" : "Listen-Only", active ? "ok" : "warn");
+      const speed = s.speed_seen ? (Number(s.vehicle_speed_kph).toFixed(1) + " km/h") : "not seen";
+      setValue(stSpeed, speed, s.speed_seen ? "" : "warn");
+      const gear = s.gear_lever_seen ? gearLabel(s.gear_lever_pos, s.gear_lever_label) : "not seen";
+      setValue(stGear, gear, s.gear_lever_seen ? "" : "warn");
+      const brake = s.brake_status_seen ? (s.driver_brake_applied ? "Pressed" : "Released") : "not seen";
+      setValue(stBrake, brake, s.driver_brake_applied ? "err" : "");
+      const torque = s.di_torque_seen ? Number(s.di_torque_nm).toFixed(1) + " Nm" : "not seen";
+      const pedal = s.di_torque_seen ? ((s.pedal_pressed ? "Pressed" : "Released") + " (" + torque + ")") : "not seen";
+      setValue(stPedal, pedal, s.pedal_pressed ? "ok" : "");
+      setValue(stSummon, s.summon_unlock ? "ON" : "OFF", s.summon_unlock ? "ok" : "");
+      stUpdated.textContent = "Updated: " + new Date().toLocaleTimeString();
+    }
+
+    function setConnectedUi(connected) {
+      connectBtn.disabled = connected;
+      disconnectBtn.disabled = !connected;
+      ipBtn.disabled = !connected;
+      sendRawBtn.disabled = !connected;
+      document.querySelectorAll("[data-cmd]").forEach((btn) => { btn.disabled = !connected; });
+    }
+
+    function parseValue(raw) {
+      if (raw === "true") return true;
+      if (raw === "false") return false;
+      const n = Number(raw);
+      if (!Number.isNaN(n)) return n;
+      return raw;
+    }
+
+    async function sendJson(obj) {
+      if (!writer) throw new Error("Serial not connected");
+      const line = JSON.stringify(obj) + "\n";
+      await writer.write(new TextEncoder().encode(line));
+      appendLog(`TX ${line.trim()}`);
+    }
+
+    async function requestStatus() {
+      await sendJson({ cmd: "status", value: true });
+    }
+
+    async function sendTextLine(text) {
+      if (!writer) throw new Error("Serial not connected");
+      const line = text.trim() + "\n";
+      await writer.write(new TextEncoder().encode(line));
+      appendLog(`TX ${line.trim()}`);
+    }
+
+    async function readLoop() {
+      readLoopRunning = true;
+      let text = "";
+      while (readLoopRunning && port && port.readable) {
+        try {
+          const localReader = port.readable.getReader();
+          reader = localReader;
+          while (readLoopRunning) {
+            const { value, done } = await localReader.read();
+            if (done) break;
+            if (!value) continue;
+            text += new TextDecoder().decode(value, { stream: true });
+            let idx;
+            while ((idx = text.indexOf("\n")) >= 0) {
+              const line = text.slice(0, idx).trim();
+              text = text.slice(idx + 1);
+              if (line) {
+                appendLog(`RX ${line}`);
+                try {
+                  const obj = JSON.parse(line);
+                  if (obj && Object.prototype.hasOwnProperty.call(obj, "op_mode")) {
+                    applyStatus(obj);
+                  }
+                } catch (_) {}
+              }
+            }
+          }
+          localReader.releaseLock();
+        } catch (err) {
+          appendLog(`RX error: ${err.message || err}`);
+          break;
+        }
+      }
+      readLoopRunning = false;
+    }
+
+    async function connect() {
+      if (!("serial" in navigator)) {
+        setStatus("Web Serial API is not supported in this browser.", "err");
+        return;
+      }
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({
+          baudRate: Number(baudSel.value),
+          dataBits: 8,
+          stopBits: 1,
+          parity: "none",
+          flowControl: "none"
+        });
+        writer = port.writable.getWriter();
+        setConnectedUi(true);
+        setStatus("Connected", "ok");
+        appendLog("Connected to serial port");
+        readLoop();
+        await requestStatus();
+        statusTimer = window.setInterval(() => {
+          requestStatus().catch((err) => appendLog(`Status poll error: ${err.message || err}`));
+        }, 1000);
+      } catch (err) {
+        setStatus("Connect failed", "err");
+        appendLog(`Connect failed: ${err.message || err}`);
+      }
+    }
+
+    async function disconnect() {
+      readLoopRunning = false;
+      if (statusTimer !== null) {
+        window.clearInterval(statusTimer);
+        statusTimer = null;
+      }
+      try {
+        if (reader) {
+          await reader.cancel();
+          reader = null;
+        }
+      } catch (_) {}
+      try {
+        if (writer) {
+          writer.releaseLock();
+          writer = null;
+        }
+      } catch (_) {}
+      try {
+        if (port) {
+          await port.close();
+          port = null;
+        }
+      } catch (err) {
+        appendLog(`Disconnect warning: ${err.message || err}`);
+      }
+      setConnectedUi(false);
+      setStatus("Disconnected", "warn");
+      appendLog("Disconnected");
+    }
+
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+
+    ipBtn.addEventListener("click", async () => {
+      try {
+        await sendTextLine("ip");
+      } catch (err) {
+        appendLog(`TX error: ${err.message || err}`);
+      }
+    });
+
+    document.querySelectorAll("[data-cmd]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await sendJson({
+            cmd: btn.getAttribute("data-cmd"),
+            value: parseValue(btn.getAttribute("data-value"))
+          });
+          window.setTimeout(() => {
+            requestStatus().catch(() => {});
+          }, 120);
+        } catch (err) {
+          appendLog(`TX error: ${err.message || err}`);
+        }
+      });
+    });
+
+    sendRawBtn.addEventListener("click", async () => {
+      try {
+        const parsed = JSON.parse(rawInput.value);
+        await sendJson(parsed);
+      } catch (err) {
+        appendLog(`JSON/TX error: ${err.message || err}`);
+      }
+    });
+
+    clearLogBtn.addEventListener("click", () => {
+      logEl.textContent = "";
+    });
+
+    setConnectedUi(false);
+  </script>
+</body>
+</html>

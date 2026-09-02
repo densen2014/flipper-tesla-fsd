@@ -110,8 +110,8 @@ static bool serial_cmd_equals(const char *cmd, const char *expected) {
 }
 
 static void serial_command_tick() {
-    static char buf[24];
-    static uint8_t len = 0;
+    static char buf[320];
+    static size_t len = 0;
 
     while (Serial.available() > 0) {
         char c = (char)Serial.read();
@@ -122,10 +122,13 @@ static void serial_command_tick() {
 
             if (serial_cmd_equals(buf, "ip") || serial_cmd_equals(buf, "wifi")) {
                 wifi_print_status();
+            } else if (web_dashboard_handle_serial_json(buf)) {
+                // JSON lines are handled by the dashboard command path so USB
+                // Web Serial can act as a backup control channel.
             } else if (serial_cmd_equals(buf, "help") || serial_cmd_equals(buf, "?")) {
-                Serial.println("[SER] Commands: ip");
+                Serial.println("[SER] Commands: ip, {\"cmd\":\"...\",\"value\":...}");
             } else {
-                Serial.println("[SER] Unknown command. Type: ip");
+                Serial.println("[SER] Unknown command. Type: ip or JSON command");
             }
             continue;
         }
@@ -1188,6 +1191,7 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
 
     // ── Continuous AP HW3/Legacy state parsers (read-only, always) ──────────
     if (frame.id == CAN_ID_SCCM_RSTALK) {
+        uint32_t now_ms = millis();
         // Safety guard (#160): auto-disable Summon EU Unlock when the driver
         // shifts into drive (0x229 gear lever full-down / D detent), so a
         // leftover Summon override can't interfere with normal AP. Runs before
@@ -1199,6 +1203,11 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
             uint8_t detent =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
                 SIG_GEAR_LEVER_POS_MASK;
+            state_enter();
+            g_state.gear_lever_last_pos = detent;
+            g_state.gear_lever_seen = true;
+            g_state.gear_lever_last_ms = now_ms;
+            state_exit();
             if (detent == SIG_GEAR_LEVER_FULL_DOWN) {
                 FSDState saved;
                 bool disabled = false;
@@ -1219,7 +1228,6 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
 
         FSDState s = state_snapshot();
         if (s.hw_version != TeslaHW_HW3 && s.hw_version != TeslaHW_Legacy) return;
-        uint32_t now_ms = millis();
         if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
             uint8_t gear_pos =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
@@ -1237,10 +1245,16 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         }
         state_exit();
         if (frame.dlc > SIG_GEAR_LEVER_COUNTER_BYTE) {
-            g_last_gear_counter =
+            uint8_t counter =
                 frame.data[SIG_GEAR_LEVER_COUNTER_BYTE] & SIG_GEAR_LEVER_COUNTER_MASK;
+            g_last_gear_counter = counter;
             g_last_gear_counter_valid = true;
             g_last_gear_counter_ms = now_ms;
+            state_enter();
+            g_state.gear_lever_last_counter = counter;
+            g_state.gear_lever_counter_seen = true;
+            g_state.gear_lever_last_ms = now_ms;
+            state_exit();
         }
         if (frame.dlc > SIG_GEAR_LEVER_COUNTER_BYTE) {
             if (gear_sequence_active() && fsd_can_transmit(&s)) gear_sequence_tick(now_ms, "CONT-AP");
@@ -1636,6 +1650,10 @@ void setup() {
     Serial.println("[BTN] Long press 3s: toggle NAG Killer");
     Serial.println("[BTN] Double click : toggle BMS serial output");
     Serial.println("[LED] Blue=Listen  Green=Active  Yellow=OTA  Red=Error");
+
+    // Bind control/state first so serial JSON control works even if WiFi/web
+    // init fails; web_dashboard_init() will start HTTP/WS if WiFi is available.
+    web_dashboard_bind_control(&g_state, g_can, CAN_ACTIVE_BUS_COUNT, &g_state_mux);
 
     // ── WiFi + Web dashboard (non-fatal if WiFi fails) ───────────────────────
     if (wifi_init(&g_state)) {

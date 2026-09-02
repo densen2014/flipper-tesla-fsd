@@ -223,6 +223,11 @@ typedef struct FSDState {
     uint8_t di_park_brake_state; // 0-15
     uint8_t di_autopark_state;   // 0-15
     uint8_t di_digital_speed;    // 0.5 kph resolution (9-bit)
+    uint8_t gear_lever_last_pos; // latest 0x229 right-stalk detent (0=center, 2=full-up, 4=full-down)
+    uint8_t gear_lever_last_counter; // latest 0x229 rolling counter
+    bool gear_lever_seen;        // true once any valid 0x229 detent is seen
+    bool gear_lever_counter_seen; // true once 0x229 counter has been observed
+    uint32_t gear_lever_last_ms; // last ms timestamp when 0x229 detent/counter was captured
 
     // --- DI_torque (0x108) — motor power ---
     float di_torque_nm;          // drive motor torque
