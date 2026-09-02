@@ -374,6 +374,18 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">CAN Vehicle</span>
     <span class="pill off" id="canVeh"><span class="pd"></span>--</span>
   </div>
+  <div class="row">
+    <span class="lbl">Vehicle Speed</span>
+    <span class="pill off" id="vehicleSpeed"><span class="pd"></span>--</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Vehicle Gear</span>
+    <span class="pill off" id="vehicleGear"><span class="pd"></span>--</span>
+  </div>
+  <div class="row">
+    <span class="lbl">Brake</span>
+    <span class="pill off" id="brakeStatus"><span class="pd"></span>--</span>
+  </div>
 </div>
 
 <!-- Battery -->
@@ -969,6 +981,13 @@ function upd(d){
 
   pill('nagSt', d.nag_killer, d.nag_killer?'ON':'OFF');
   pill('canVeh', d.can_vehicle_detected, d.can_vehicle_detected?'Detected':'No CAN Traffic');
+  var speedFresh=d.speed_seen===true;
+  pill('vehicleSpeed', speedFresh, speedFresh?(Number(d.vehicle_speed_kph||0).toFixed(1)+' km/h'):'Waiting');
+  var gearNames={1:'P',2:'R',3:'N',4:'D'};
+  var gearSeen=d.vehicle_gear_seen===true;
+  pill('vehicleGear', gearSeen, gearSeen?(gearNames[d.vehicle_gear]||'Unknown'):'Waiting');
+  var brakeSeen=d.brake_status_seen===true;
+  pill('brakeStatus', brakeSeen, brakeSeen?(d.driver_brake_applied?'Pressed':'Released'):'Waiting');
   pill('bmsSt', d.bms && d.bms.seen, (d.bms && d.bms.seen)?'Live':'Waiting Frames');
   var bF=document.getElementById('bmsFrames');
   if(bF) bF.textContent='HV:'+(d.bms_hv_seen||0)+' SOC:'+(d.bms_soc_seen||0)+' TH:'+(d.bms_thermal_seen||0);
@@ -1633,6 +1652,9 @@ static String build_json() {
     j += "\"speed_seen\":"; j += state.speed_seen                      ? "true" : "false"; j += ',';
     j += "\"vehicle_speed_kph\":"; j += vehicle_speed_s;                j += ',';
     j += "\"di_digital_speed\":"; j += (int)state.di_digital_speed;     j += ',';
+    j += "\"ui_speed\":"; j += (int)state.ui_speed;                     j += ',';
+    j += "\"vehicle_gear\":"; j += (int)state.vehicle_gear;             j += ',';
+    j += "\"vehicle_gear_seen\":"; j += state.vehicle_gear_seen ? "true" : "false"; j += ',';
     j += "\"pedal_pressed\":"; j += pedal_pressed                       ? "true" : "false"; j += ',';
     j += "\"di_torque_seen\":"; j += state.di_torque_seen              ? "true" : "false"; j += ',';
     j += "\"di_torque_nm\":"; j += di_torque_s;                         j += ',';

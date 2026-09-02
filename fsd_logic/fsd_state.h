@@ -85,6 +85,8 @@ typedef struct FSDState {
     uint8_t rear_defrost_state;  // 0=sna 1=on 2=off (from 0x343)
     float vehicle_speed_kph;     // from 0x257 DI_vehicleSpeed (12-bit, 0.08 factor, -40 offset)
     uint8_t ui_speed;            // from 0x257 DI_uiSpeed (8-bit, display value)
+    uint8_t vehicle_gear;        // from 0x118 DI_gear: 1=P, 2=R, 3=N, 4=D
+    bool vehicle_gear_seen;
     uint8_t steering_tune_mode;  // from 0x370 EPAS3S_currentTuneMode (0-6)
     float torsion_bar_torque_nm; // from 0x370 EPAS3S_torsionBarTorque
     bool torsion_bar_torque_seen;

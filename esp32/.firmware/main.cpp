@@ -1279,6 +1279,18 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         state_exit();
         return;
     }
+    if (frame.id == CAN_ID_DI_SYSTEM) {
+        state_enter();
+        fsd_handle_di_system(&g_state, &frame);
+        state_exit();
+        return;
+    }
+    if (frame.id == CAN_ID_DI_SPEED) {
+        state_enter();
+        fsd_handle_di_speed(&g_state, &frame);
+        state_exit();
+        return;
+    }
     if (frame.id == CAN_ID_VCFRONT_LIGHT) {
         state_enter();
         fsd_handle_vcfront_lighting(&g_state, &frame);

@@ -796,6 +796,15 @@ void fsd_handle_esp_status(FSDState *state, const CanFrame *frame) {
     state->brake_status_seen = true;
 }
 
+void fsd_handle_di_speed(FSDState *state, const CanFrame *frame) {
+    if (frame->dlc < 4) return;
+    uint16_t raw = ((uint16_t)frame->data[2] << 4) | (frame->data[1] >> 4);
+    state->vehicle_speed_kph = (float)raw * 0.08f - 40.0f;
+    if (state->vehicle_speed_kph < 0.0f) state->vehicle_speed_kph = 0.0f;
+    state->ui_speed = frame->data[3];
+    state->speed_seen = true;
+}
+
 // ── BMS read-only parsers ─────────────────────────────────────────────────────
 
 void fsd_handle_bms_hv(FSDState *state, const CanFrame *frame) {
@@ -1019,6 +1028,13 @@ void fsd_handle_gear_lever(FSDState *state, const CanFrame *frame, uint32_t now_
         best_pos = gear_stronger_pos(best_pos, pos);
     }
     last_seen_ms = now_ms;
+}
+
+void fsd_handle_di_system(FSDState *state, const CanFrame *frame) {
+    if (frame->dlc <= SIG_DI_GEAR_BYTE) return;
+    state->vehicle_gear =
+        (frame->data[SIG_DI_GEAR_BYTE] >> SIG_DI_GEAR_SHIFT) & SIG_DI_GEAR_MASK;
+    state->vehicle_gear_seen = true;
 }
 
 void fsd_handle_ui_map_data(FSDState *state, const CanFrame *frame, uint32_t now_ms) {
