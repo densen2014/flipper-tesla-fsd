@@ -383,7 +383,7 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
   </div>
   <div class="row">
     <span class="lbl">Summon Status</span>
-    <span class="pill off" id="summonStatus" title="Click to restore" onclick="forceSummonRecover()"><span class="pd"></span>--</span>
+    <span class="pill off" id="summonStatus" title="Click to toggle" onclick="toggleSummonTemp()"><span class="pd"></span>--</span>
   </div>
 </div>
 
@@ -1009,8 +1009,9 @@ function upd(d){
   summonTempDisabled=summonDisabled;
   if(summonEl) {
     summonEl.dataset.tempDisabled=summonDisabled?'true':'false';
-    summonEl.style.cursor=summonDisabled?'pointer':'default';
-    summonEl.title=summonDisabled?'Click to restore':'';
+    summonEl.dataset.summonEnabled=summonEnabled?'true':'false';
+    summonEl.style.cursor=summonEnabled?'pointer':'default';
+    summonEl.title=summonEnabled?'Click to toggle':'';
   }
   var speedFresh=d.speed_seen===true;
   pill('vehicleSpeed', speedFresh, speedFresh?(Number(d.vehicle_speed_kph||0).toFixed(1)+' km/h'):'Waiting');
@@ -1303,10 +1304,17 @@ function cmd(c,v){
     busy = Date.now() + 3000;
   }
 }
-function forceSummonRecover(){
+function toggleSummonTemp(){
   var e=document.getElementById('summonStatus');
-  if(summonTempDisabled || (e && e.dataset.tempDisabled==='true')) {
-    cmd('summon_force_recover',true);
+  if(e && e.dataset.summonEnabled==='true') {
+    var disabled=e.dataset.tempDisabled==='true';
+    cmd(disabled?'summon_force_recover':'summon_temp_disable',true);
+    busy=0;
+    summonTempDisabled=!disabled;
+    if(e) {
+      e.dataset.tempDisabled=disabled?'false':'true';
+    }
+    pill('summonStatus',!disabled,disabled?'Enabled':'Temp disabled');
   }
 }
 function toggleMode(){ cmd('mode',null); }
@@ -2154,6 +2162,15 @@ static void ws_event(uint8_t num, WStype_t type,
             Serial.printf("[Web] Suppress Speed Chime: %s\n", enabled ? "ON" : "OFF");
             prefs_save(&saved);
         }
+    } else if (strstr(buf, "\"summon_temp_disable\"")) {
+        state_enter();
+        if (g_state->summon_unlock) {
+            g_state->summon_temp_disabled = true;
+            g_state->summon_temp_recovery_armed = false;
+            g_state->summon_temp_disabled_ms = millis();
+        }
+        state_exit();
+        Serial.println("[Web] Summon temporary disable: ENABLED");
     } else if (strstr(buf, "\"summon_force_recover\"")) {
         bool recovered = false;
         state_enter();
@@ -2801,6 +2818,17 @@ bool web_dashboard_handle_serial_json(const char *line) {
         state_exit();
         Serial.printf("{\"ok\":true,\"cmd\":\"summon_force_recover\",\"recovered\":%s}\n",
                       recovered ? "true" : "false");
+        return true;
+    }
+    if (strcmp(cmd, "summon_temp_disable") == 0) {
+        state_enter();
+        if (g_state->summon_unlock) {
+            g_state->summon_temp_disabled = true;
+            g_state->summon_temp_recovery_armed = false;
+            g_state->summon_temp_disabled_ms = millis();
+        }
+        state_exit();
+        Serial.println("{\"ok\":true,\"cmd\":\"summon_temp_disable\"}");
         return true;
     }
     if (strcmp(cmd, "gear") == 0) {

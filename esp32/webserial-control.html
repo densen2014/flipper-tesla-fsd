@@ -295,7 +295,7 @@
       <div class="status-row"><span class="status-label">Gear Lever</span><span class="pill off" id="stGear"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">Pedal</span><span class="pill off" id="stPedal"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">NAG Killer</span><span class="pill off" id="stNag"><span class="pill-dot"></span>--</span></div>
-      <div class="status-row"><span class="status-label">Summon</span><span class="pill off" id="stSummon" title="Click to restore"><span class="pill-dot"></span>--</span></div>
+      <div class="status-row"><span class="status-label">Summon</span><span class="pill off" id="stSummon" title="Click to toggle"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">Summon Auto Control</span><span class="pill off" id="stSummonControl"><span class="pill-dot"></span>--</span></div>
       <div class="hint" id="stUpdated" style="margin-top: 8px;">No status yet.</div>
     </div>
@@ -445,7 +445,8 @@
         : (s.summon_unlock ? "Enabled" : "Disabled");
       setValue(stSummon, summonStatus, s.summon_temp_disabled ? "warn" : (s.summon_unlock ? "ok" : ""));
       stSummon.dataset.tempDisabled = s.summon_temp_disabled ? "true" : "false";
-      stSummon.classList.toggle("actionable", !!s.summon_temp_disabled);
+      stSummon.dataset.summonEnabled = s.summon_unlock ? "true" : "false";
+      stSummon.classList.toggle("actionable", !!s.summon_unlock);
       setValue(stSummonControl, s.summon_auto_control === 0 ? "Brake" : "unknown", "");
       const bmsFrames = (s.bms_hv_seen ? 1 : 0) + (s.bms_soc_seen ? 1 : 0) + (s.bms_thermal_seen ? 1 : 0);
       setValue(stBms, s.bms_output ? "Enabled" : "Disabled", s.bms_output ? "ok" : "off");
@@ -604,9 +605,16 @@
     disconnectBtn.addEventListener("click", disconnect);
 
     stSummon.addEventListener("click", async () => {
-      if (stSummon.dataset.tempDisabled !== "true") return;
+      if (stSummon.dataset.summonEnabled !== "true") return;
       try {
-        await sendJson({ cmd: "summon_force_recover", value: true });
+        const temporaryDisabled = stSummon.dataset.tempDisabled === "true";
+        await sendJson({
+          cmd: temporaryDisabled ? "summon_force_recover" : "summon_temp_disable",
+          value: true
+        });
+        setValue(stSummon, temporaryDisabled ? "Enabled" : "Temp disabled",
+          temporaryDisabled ? "ok" : "warn");
+        stSummon.dataset.tempDisabled = temporaryDisabled ? "false" : "true";
         window.setTimeout(() => {
           requestStatus().catch(() => {});
         }, 120);
