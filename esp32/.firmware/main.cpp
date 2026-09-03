@@ -1192,13 +1192,6 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
     // ── Continuous AP HW3/Legacy state parsers (read-only, always) ──────────
     if (frame.id == CAN_ID_SCCM_RSTALK) {
         uint32_t now_ms = millis();
-        // Safety guard (#160): auto-disable Summon EU Unlock when the driver
-        // shifts into drive (0x229 gear lever full-down / D detent), so a
-        // leftover Summon override can't interfere with normal AP. Runs before
-        // the HW3/Legacy Continuous-AP gate below because Summon EU Unlock
-        // applies on HW3 + HW4, and that gate returns early on HW4. Edge-
-        // triggered by the summon_unlock==true guard: NVS is written only on the
-        // true→false flip, so repeated full-down 0x229 frames can't thrash NVS.
         if (frame.dlc > SIG_GEAR_LEVER_POS_BYTE) {
             uint8_t detent =
                 (frame.data[SIG_GEAR_LEVER_POS_BYTE] >> SIG_GEAR_LEVER_POS_SHIFT) &
@@ -1208,22 +1201,6 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
             g_state.gear_lever_seen = true;
             g_state.gear_lever_last_ms = now_ms;
             state_exit();
-            if (detent == SIG_GEAR_LEVER_FULL_DOWN) {
-                FSDState saved;
-                bool disabled = false;
-                state_enter();
-                if (g_state.summon_unlock) {
-                    g_state.summon_unlock = false;
-                    saved = g_state;
-                    disabled = true;
-                }
-                state_exit();
-                if (disabled) {
-                    Serial.println("[SAFETY] Summon EU Unlock auto-disabled on drive-gear (0x229)");
-                    can_dump_log("[SAFETY] Summon EU Unlock auto-disabled on drive-gear (0x229)");
-                    prefs_save(&saved);
-                }
-            }
         }
 
         FSDState s = state_snapshot();
