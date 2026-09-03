@@ -189,7 +189,8 @@
         <div class="kv"><div class="k">Mode</div><div class="v" id="stMode">--</div></div>
         <div class="kv"><div class="k">Gear Lever</div><div class="v" id="stGear">--</div></div>
         <div class="kv"><div class="k">Pedal</div><div class="v" id="stPedal">--</div></div>
-        <div class="kv"><div class="k">Summon EU Unlock</div><div class="v" id="stSummon">--</div></div>
+        <div class="kv"><div class="k">Summon Status</div><div class="v" id="stSummon">--</div></div>
+        <div class="kv"><div class="k">Summon Auto Control</div><div class="v" id="stSummonControl">--</div></div>
       </div>
       <div class="hint" id="stUpdated" style="margin-top: 8px;">No status yet.</div>
     </div>
@@ -239,6 +240,7 @@
     const stBrake = document.getElementById("stBrake");
     const stPedal = document.getElementById("stPedal");
     const stSummon = document.getElementById("stSummon");
+    const stSummonControl = document.getElementById("stSummonControl");
     const stTurn = document.getElementById("stTurn");
     const stUpdated = document.getElementById("stUpdated");
 
@@ -293,7 +295,10 @@
       const torque = s.di_torque_seen ? Number(s.di_torque_nm).toFixed(1) + " Nm" : "not seen";
       const pedal = s.di_torque_seen ? ((s.pedal_pressed ? "Pressed" : "Released") + " (" + torque + ")") : "not seen";
       setValue(stPedal, pedal, s.pedal_pressed ? "ok" : "");
-      setValue(stSummon, s.summon_unlock ? "ON" : "OFF", s.summon_unlock ? "ok" : "");
+      const summonStatus = s.summon_temp_disabled ? "Temporarily disabled"
+        : (s.summon_unlock ? "Enabled" : "Not enabled");
+      setValue(stSummon, summonStatus, s.summon_temp_disabled ? "warn" : (s.summon_unlock ? "ok" : ""));
+      setValue(stSummonControl, s.summon_auto_control === 0 ? "Brake" : "unknown", "");
       stUpdated.textContent = "Updated: " + new Date().toLocaleTimeString();
     }
 

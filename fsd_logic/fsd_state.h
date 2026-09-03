@@ -21,9 +21,7 @@ typedef enum {
 } SpeedLimitSource;
 
 typedef enum {
-    SummonAutoControl_DriveGearPersistent = 0,
-    SummonAutoControl_BrakeTemporary = 1,
-    SummonAutoControl_Disabled = 2,
+    SummonAutoControl_BrakeTemporary = 0,
 } SummonAutoControlMode;
 
 typedef struct FSDState {

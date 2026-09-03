@@ -381,6 +381,10 @@ input:checked+.sl2:before{transform:translateX(20px);background:#fff}
     <span class="lbl">CAN Vehicle</span>
     <span class="pill off" id="canVeh"><span class="pd"></span>--</span>
   </div>
+  <div class="row">
+    <span class="lbl">Summon Status</span>
+    <span class="pill off" id="summonStatus"><span class="pd"></span>--</span>
+  </div>
 </div>
 
 <details class="card" open>
@@ -996,6 +1000,10 @@ function upd(d){
 
   pill('nagSt', d.nag_killer, d.nag_killer?'ON':'OFF');
   pill('canVeh', d.can_vehicle_detected, d.can_vehicle_detected?'Detected':'No CAN Traffic');
+  var summonEnabled=!!d.summon_unlock;
+  var summonDisabled=!!d.summon_temp_disabled;
+  pill('summonStatus', summonEnabled && !summonDisabled,
+    summonDisabled?'Temporarily disabled':(summonEnabled?'Enabled':'Not enabled'));
   var speedFresh=d.speed_seen===true;
   pill('vehicleSpeed', speedFresh, speedFresh?(Number(d.vehicle_speed_kph||0).toFixed(1)+' km/h'):'Waiting');
   var gearNames={1:'P',2:'R',3:'N',4:'D'};
@@ -1666,6 +1674,8 @@ static String build_json() {
     j += "\"suppress_speed_chime\":"; j += state.suppress_speed_chime  ? "true" : "false"; j += ',';
     j += "\"tlssc_restore\":"; j += state.tlssc_restore                ? "true" : "false"; j += ',';
     j += "\"summon_unlock\":"; j += state.summon_unlock                ? "true" : "false"; j += ',';
+    j += "\"summon_auto_control\":"; j += (int)state.summon_auto_control; j += ',';
+    j += "\"summon_temp_disabled\":"; j += state.summon_temp_disabled ? "true" : "false"; j += ',';
     j += "\"driver_brake_applied\":"; j += state.driver_brake_applied  ? "true" : "false"; j += ',';
     j += "\"brake_status_seen\":"; j += state.brake_status_seen        ? "true" : "false"; j += ',';
     j += "\"left_turn_active\":"; j += state.left_turn_active          ? "true" : "false"; j += ',';
