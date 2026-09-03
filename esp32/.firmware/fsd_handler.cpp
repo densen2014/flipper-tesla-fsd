@@ -283,6 +283,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
     uint8_t mux     = read_mux_id(frame);
     bool    fsd_ui  = is_fsd_selected(frame, state->force_fsd, state->china_mode);
     bool    modified = false;
+    bool    summon_active = state->summon_unlock && !state->summon_temp_disabled;
 
     // mux 0 is the authoritative "is FSD requested" mux
     if (mux == CAN_MUX_0) state->fsd_enabled = fsd_ui;
@@ -323,7 +324,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
             modified = true;
         }
         if (mux == CAN_MUX_1 &&
-            (state->nag_killer || state->summon_unlock || state->assist_telemetry_off ||
+            (state->nag_killer || summon_active || state->assist_telemetry_off ||
              state->apmv3_branch <= 5)) {
             if (state->nag_killer) {
                 // Nag suppression via bit 19 (clear = no hands-on-wheel request)
@@ -331,7 +332,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
                 state->nag_suppressed = true;
                 modified = true;
             }
-            if (state->summon_unlock) {
+            if (summon_active) {
                 set_bit(frame, SIG_AP_NAG_CLEAR_BIT, false);       // bit19 EU restriction clear
                 set_bit(frame, SIG_AP_HW4_NAG_CONFIRM_BIT, true);  // bit47 summon enable
                 modified = true;
@@ -374,7 +375,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
             modified = true;
         }
         if (mux == CAN_MUX_1 &&
-            (state->nag_killer || state->summon_unlock || state->assist_telemetry_off ||
+            (state->nag_killer || summon_active || state->assist_telemetry_off ||
              state->apmv3_branch <= 5)) {
             if (state->nag_killer) {
                 set_bit(frame, SIG_AP_NAG_CLEAR_BIT, false);      // clear hands-on-wheel nag
@@ -382,7 +383,7 @@ bool fsd_handle_autopilot_frame(FSDState *state, CanFrame *frame) {
                 state->nag_suppressed = true;
                 modified = true;
             }
-            if (state->summon_unlock) {
+            if (summon_active) {
                 set_bit(frame, SIG_AP_NAG_CLEAR_BIT, false);       // bit19 EU restriction clear
                 set_bit(frame, SIG_AP_HW4_NAG_CONFIRM_BIT, true);  // bit47 summon enable
                 modified = true;
