@@ -2147,6 +2147,10 @@ static void ws_event(uint8_t num, WStype_t type,
             FSDState saved;
             state_enter();
             g_state->summon_unlock = enabled;
+            if (!enabled) {
+                g_state->summon_temp_disabled = false;
+                g_state->summon_temp_disabled_ms = 0;
+            }
             saved = *g_state;
             state_exit();
             Serial.printf("[Web] Summon EU Unlock: %s\n", enabled ? "ON" : "OFF");
