@@ -20,6 +20,12 @@ typedef enum {
     SpeedLimitSource_Acc,
 } SpeedLimitSource;
 
+typedef enum {
+    SummonAutoControl_DriveGearPersistent = 0,
+    SummonAutoControl_BrakeTemporary = 1,
+    SummonAutoControl_Disabled = 2,
+} SummonAutoControlMode;
+
 typedef struct FSDState {
     TeslaHWVersion hw_version;
     // Manual HW selection (#110). TeslaHW_Unknown = auto-detect (default); any
@@ -206,6 +212,9 @@ typedef struct FSDState {
     // bit19 (EU summon restriction) and sets bit47 (summon enable), on HW3 + HW4.
     // Opt-in, default OFF. // TODO: add Summon EU Unlock to Flipper menu
     bool summon_unlock;
+    SummonAutoControlMode summon_auto_control;
+    bool summon_temp_disabled;
+    uint32_t summon_temp_disabled_ms;
     // AP branch/tier selector (0x3FD DAS_autopilotControl mux1, UI_apmv3Branch,
     // bits 40-42 = byte5 bits 0-2). Enum: 0=LIVE 1=STAGE 2=DEV 3=STAGE2 4=EAP
     // 5=DEMO. Opt-in, default OFF (0xFF sentinel = don't touch). Experimental and

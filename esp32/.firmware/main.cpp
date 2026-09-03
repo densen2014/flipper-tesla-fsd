@@ -1276,10 +1276,21 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
     }
     if (frame.id == CAN_ID_ESP_STATUS) {
         uint32_t now_ms = millis();
+        bool summon_temp_disabled = false;
         state_enter();
+        bool brake_was_applied = g_state.driver_brake_applied;
         fsd_handle_esp_status(&g_state, &frame);
         if (g_state.driver_brake_applied) g_cont_ap_last_brake_ms = now_ms;
+        if (g_state.summon_auto_control == SummonAutoControl_BrakeTemporary &&
+            !brake_was_applied && g_state.driver_brake_applied &&
+            g_state.summon_unlock) {
+            g_state.summon_temp_disabled = true;
+            g_state.summon_temp_disabled_ms = now_ms;
+            summon_temp_disabled = true;
+        }
         state_exit();
+        if (summon_temp_disabled)
+            Serial.println("[SAFETY] Summon EU Unlock temporarily disabled on brake apply");
         return;
     }
     // Steering angle (0x129) — read-only, feeds the Soft Engage gate (#108).
