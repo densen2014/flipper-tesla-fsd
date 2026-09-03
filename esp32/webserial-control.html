@@ -506,27 +506,30 @@
         try {
           const localReader = port.readable.getReader();
           reader = localReader;
-          while (readLoopRunning) {
-            const { value, done } = await localReader.read();
-            if (done) break;
-            if (!value) continue;
-            text += new TextDecoder().decode(value, { stream: true });
-            let idx;
-            while ((idx = text.indexOf("\n")) >= 0) {
-              const line = text.slice(0, idx).trim();
-              text = text.slice(idx + 1);
-              if (line) {
-                appendLog(`RX ${line}`);
-                try {
-                  const obj = JSON.parse(line);
-                  if (obj && Object.prototype.hasOwnProperty.call(obj, "op_mode")) {
-                    applyStatus(obj);
-                  }
-                } catch (_) {}
+          try {
+            while (readLoopRunning) {
+              const { value, done } = await localReader.read();
+              if (done) break;
+              if (!value) continue;
+              text += new TextDecoder().decode(value, { stream: true });
+              let idx;
+              while ((idx = text.indexOf("\n")) >= 0) {
+                const line = text.slice(0, idx).trim();
+                text = text.slice(idx + 1);
+                if (line) {
+                  appendLog(`RX ${line}`);
+                  try {
+                    const obj = JSON.parse(line);
+                    if (obj && Object.prototype.hasOwnProperty.call(obj, "op_mode")) {
+                      applyStatus(obj);
+                    }
+                  } catch (_) {}
+                }
               }
             }
+          } finally {
+            localReader.releaseLock();
           }
-          localReader.releaseLock();
         } catch (err) {
           appendLog(`RX error: ${err.message || err}`);
           break;
