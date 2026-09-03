@@ -47,7 +47,7 @@ void fsd_state_init(FSDState *state, TeslaHWVersion hw) {
     state->ignore_ota           = false;
     state->emergency_vehicle_detect = false;
     state->summon_unlock        = false;    // opt-in Summon EU Unlock, default OFF
-    state->summon_auto_control  = SummonAutoControl_Disabled;
+    state->summon_auto_control  = SummonAutoControl_BrakeTemporary;
     state->summon_temp_disabled = false;
     state->summon_temp_disabled_ms = 0;
     state->apmv3_branch         = 0xFF;      // opt-in AP branch/tier selector, default OFF (0xFF sentinel)
