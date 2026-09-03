@@ -2149,6 +2149,7 @@ static void ws_event(uint8_t num, WStype_t type,
             g_state->summon_unlock = enabled;
             if (!enabled) {
                 g_state->summon_temp_disabled = false;
+                g_state->summon_temp_recovery_armed = false;
                 g_state->summon_temp_disabled_ms = 0;
             }
             saved = *g_state;

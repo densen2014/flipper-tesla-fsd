@@ -1259,6 +1259,10 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
     if (frame.id == CAN_ID_DI_SYSTEM) {
         state_enter();
         fsd_handle_di_system(&g_state, &frame);
+        if (g_state.summon_temp_disabled && g_state.vehicle_gear_seen &&
+            g_state.vehicle_gear != SIG_DI_GEAR_PARK) {
+            g_state.summon_temp_recovery_armed = true;
+        }
         state_exit();
         return;
     }
@@ -1279,20 +1283,25 @@ static void process_frame(CanBusId bus, const CanFrame &frame) {
         bool summon_temp_disabled = false;
         bool summon_temp_restored = false;
         state_enter();
+        bool brake_was_seen = g_state.brake_status_seen;
         bool brake_was_applied = g_state.driver_brake_applied;
         bool summon_was_temp_disabled = g_state.summon_temp_disabled;
         fsd_handle_esp_status(&g_state, &frame);
         if (g_state.driver_brake_applied) g_cont_ap_last_brake_ms = now_ms;
         if (g_state.summon_auto_control == SummonAutoControl_BrakeTemporary &&
+            brake_was_seen &&
             !brake_was_applied && g_state.driver_brake_applied) {
             if (g_state.summon_unlock && summon_was_temp_disabled &&
                 g_state.vehicle_gear_seen &&
-                g_state.vehicle_gear == SIG_DI_GEAR_PARK) {
+                g_state.vehicle_gear == SIG_DI_GEAR_PARK &&
+                g_state.summon_temp_recovery_armed) {
                 g_state.summon_temp_disabled = false;
+                g_state.summon_temp_recovery_armed = false;
                 g_state.summon_temp_disabled_ms = 0;
                 summon_temp_restored = true;
             } else if (g_state.summon_unlock && !summon_was_temp_disabled) {
                 g_state.summon_temp_disabled = true;
+                g_state.summon_temp_recovery_armed = false;
                 g_state.summon_temp_disabled_ms = now_ms;
                 summon_temp_disabled = true;
             }

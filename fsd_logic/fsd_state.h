@@ -212,6 +212,7 @@ typedef struct FSDState {
     bool summon_unlock;
     SummonAutoControlMode summon_auto_control;
     bool summon_temp_disabled;
+    bool summon_temp_recovery_armed;
     uint32_t summon_temp_disabled_ms;
     // AP branch/tier selector (0x3FD DAS_autopilotControl mux1, UI_apmv3Branch,
     // bits 40-42 = byte5 bits 0-2). Enum: 0=LIVE 1=STAGE 2=DEV 3=STAGE2 4=EAP

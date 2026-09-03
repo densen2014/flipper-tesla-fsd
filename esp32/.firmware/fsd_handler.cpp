@@ -49,6 +49,7 @@ void fsd_state_init(FSDState *state, TeslaHWVersion hw) {
     state->summon_unlock        = false;    // opt-in Summon EU Unlock, default OFF
     state->summon_auto_control  = SummonAutoControl_BrakeTemporary;
     state->summon_temp_disabled = false;
+    state->summon_temp_recovery_armed = false;
     state->summon_temp_disabled_ms = 0;
     state->apmv3_branch         = 0xFF;      // opt-in AP branch/tier selector, default OFF (0xFF sentinel)
     state->assist_tlssc_bit38   = false;    // opt-in TLSSC bit38 explicit enable, default OFF
