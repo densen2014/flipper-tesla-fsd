@@ -161,7 +161,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .card>summary{position:relative;cursor:pointer;list-style:none}
 .card>summary::-webkit-details-marker{display:none}
 .card>summary .card-head{margin-bottom:0}
-.card>summary:after{content:"";position:absolute;right:18px;top:9px;width:9px;height:9px;
+.card>summary:after{content:"";position:absolute;right:18px;top:6px;width:9px;height:9px;
   border-right:2px solid var(--text2);border-bottom:2px solid var(--text2);
   transform:rotate(45deg);transition:transform .2s}
 .card[open]>summary:after{transform:rotate(225deg);top:6px}
