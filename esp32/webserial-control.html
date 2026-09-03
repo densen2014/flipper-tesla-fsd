@@ -149,6 +149,7 @@
     .pill.warn { background: rgba(255,107,107,.14); color: var(--err); }
     .pill.off { background: rgba(71,85,105,.22); color: var(--text3); }
     .pill.err { background: rgba(255,107,107,.14); color: var(--err); }
+    .pill.actionable { cursor: pointer; }
     .pill-dot {
       width: 6px;
       height: 6px;
@@ -294,7 +295,7 @@
       <div class="status-row"><span class="status-label">Gear Lever</span><span class="pill off" id="stGear"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">Pedal</span><span class="pill off" id="stPedal"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">NAG Killer</span><span class="pill off" id="stNag"><span class="pill-dot"></span>--</span></div>
-      <div class="status-row"><span class="status-label">Summon Status</span><span class="pill off" id="stSummon"><span class="pill-dot"></span>--</span></div>
+      <div class="status-row"><span class="status-label">Summon</span><span class="pill off" id="stSummon" title="Click to restore"><span class="pill-dot"></span>--</span></div>
       <div class="status-row"><span class="status-label">Summon Auto Control</span><span class="pill off" id="stSummonControl"><span class="pill-dot"></span>--</span></div>
       <div class="hint" id="stUpdated" style="margin-top: 8px;">No status yet.</div>
     </div>
@@ -440,9 +441,11 @@
       const torque = s.di_torque_seen ? Number(s.di_torque_nm).toFixed(1) + " Nm" : "not seen";
       const pedal = s.di_torque_seen ? ((s.pedal_pressed ? "Pressed" : "Released") + " (" + torque + ")") : "not seen";
       setValue(stPedal, pedal, s.pedal_pressed ? "ok" : "");
-      const summonStatus = s.summon_temp_disabled ? "Temporarily disabled"
-        : (s.summon_unlock ? "Enabled" : "Not enabled");
+      const summonStatus = s.summon_temp_disabled ? "Temp disabled"
+        : (s.summon_unlock ? "Enabled" : "Disabled");
       setValue(stSummon, summonStatus, s.summon_temp_disabled ? "warn" : (s.summon_unlock ? "ok" : ""));
+      stSummon.dataset.tempDisabled = s.summon_temp_disabled ? "true" : "false";
+      stSummon.classList.toggle("actionable", !!s.summon_temp_disabled);
       setValue(stSummonControl, s.summon_auto_control === 0 ? "Brake" : "unknown", "");
       const bmsFrames = (s.bms_hv_seen ? 1 : 0) + (s.bms_soc_seen ? 1 : 0) + (s.bms_thermal_seen ? 1 : 0);
       setValue(stBms, s.bms_output ? "Enabled" : "Disabled", s.bms_output ? "ok" : "off");
@@ -599,6 +602,18 @@
 
     connectBtn.addEventListener("click", connect);
     disconnectBtn.addEventListener("click", disconnect);
+
+    stSummon.addEventListener("click", async () => {
+      if (stSummon.dataset.tempDisabled !== "true") return;
+      try {
+        await sendJson({ cmd: "summon_force_recover", value: true });
+        window.setTimeout(() => {
+          requestStatus().catch(() => {});
+        }, 120);
+      } catch (err) {
+        appendLog(`TX error: ${err.message || err}`);
+      }
+    });
 
     ipBtn.addEventListener("click", async () => {
       try {
